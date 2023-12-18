@@ -1,0 +1,1 @@
+这个文件夹的资源，都会被转到public里面，所以不用担心，imgs在config里面可以直接写/imgs/xxx.png
