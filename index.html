@@ -272,13 +272,16 @@ float material(float r, float psi, float seed, out float heat) {
   float pw = psi + w.y * 0.4;
   float broad = fbm(vec2(rw * 1.2 + seed, pw * (6.0 / TAU)), 6.0, 3);
   float wisp = fbm(vec2(rw * 2.8 + seed + 7.0, pw * (12.0 / TAU)), 12.0, 3);
+  float fine = fbm(vec2(rw * 7.0 + seed + 3.0, pw * (18.0 / TAU)), 18.0, 3);
   float p = smoothstep(0.3, 0.75, broad);
   float c = smoothstep(0.36, 0.64, wisp);
-  // Dense and continuous near the hole; thinning into long, separate wisps
-  // further out, so the outer boundary breaks up into elongated clumps.
+  float f = smoothstep(0.35, 0.7, fine);
+  // Dense and continuous near the hole, crossed by thin flow lines that the
+  // orbital blur draws out into long streaks; thinning into long, separate
+  // wisps further out, so the outer boundary breaks up into elongated clumps.
   float dense = 1.0 - smoothstep(R_IN + 1.0, R_IN + 6.5, r);
-  float smoothTex = 0.7 + 0.3 * p + 0.12 * (c - 0.5);
-  float wispTex = 0.05 + 1.1 * c * (0.55 + 0.45 * p);
+  float smoothTex = 0.65 + 0.3 * p + 0.3 * (f - 0.5) + 0.1 * (c - 0.5);
+  float wispTex = 0.05 + 1.1 * c * (0.55 + 0.45 * p) + 0.2 * f * c;
   heat = p;
   return mix(wispTex, smoothTex, dense);
 }
@@ -361,6 +364,8 @@ uniform float uHaze;
 uniform float uPxPerRad;
 uniform sampler2D uDisk;
 uniform vec2 uDiskSize;
+uniform vec4 uPlanet;     // xyz centre, w radius (world units)
+uniform vec3 uGalaxy;     // direction of a faint background galaxy
 
 // Units: Schwarzschild radius rs = 1 (M = 0.5). Black hole at the origin,
 // accretion disk in the y = 0 plane, camera a little above the plane.
@@ -427,10 +432,13 @@ float fbm(vec2 p, int oct) {
 
 vec3 palette(float r) {
   float t = clamp((r - R_IN) / (R_OUT - R_IN), 0.0, 1.0);
-  vec3 c0 = vec3(0.92, 0.95, 1.00);
-  vec3 c1 = vec3(1.00, 0.82, 0.55);
-  vec3 c2 = vec3(0.75, 0.48, 0.24);
-  return t < 0.3 ? mix(c0, c1, t / 0.3) : mix(c1, c2, (t - 0.3) / 0.7);
+  vec3 c0 = vec3(0.92, 0.95, 1.00);   // blue-white core
+  vec3 c1 = vec3(1.00, 0.86, 0.62);   // cream
+  vec3 c2 = vec3(0.78, 0.52, 0.28);   // tan
+  vec3 c3 = vec3(0.42, 0.44, 0.52);   // cool grey rim
+  if (t < 0.25) return mix(c0, c1, t / 0.25);
+  if (t < 0.6) return mix(c1, c2, (t - 0.25) / 0.35);
+  return mix(c2, c3, (t - 0.6) / 0.4);
 }
 
 vec2 diskUv(float r, float phi) {
@@ -455,7 +463,7 @@ vec3 diskSample(vec3 hit, vec3 dir, float s, float turn, out float alpha) {
   float edgeIn = smoothstep(R_IN, R_IN + 0.06, r);
   float edgeOut = 1.0 - smoothstep(R_OUT * 0.5, R_OUT, r);
   float prof = pow(R_IN / r, 2.2);
-  float I = 2.6 * prof * edgeIn * edgeOut * tex;
+  float I = 2.8 * prof * edgeIn * edgeOut * tex;
   I += 2.0 * exp(-(r - R_IN) * 1.0) * edgeIn * (0.7 + 0.3 * tex);   // hot inner region
 
   // Relativistic beaming of the orbiting gas (photon travels along -dir).
@@ -564,6 +572,15 @@ vec3 starfield(vec3 d, float fade) {
   vec3 dust = mix(vec3(0.06, 0.10, 0.20), vec3(0.20, 0.13, 0.08), n2);
   col += dust * band * (0.15 + 0.85 * n1 * n1) * 0.05;
   col += vec3(0.002, 0.003, 0.006) * (0.5 + 0.5 * n1);
+
+  // A distant galaxy: a soft tilted ellipse with a brighter core.
+  vec3 ga = normalize(cross(uGalaxy, vec3(0.0, 1.0, 0.0)));
+  vec3 gb = cross(uGalaxy, ga);
+  vec2 g = vec2(dot(d, ga), dot(d, gb));
+  g = vec2(g.x * 0.85 + g.y * 0.53, -g.x * 0.53 + g.y * 0.85);
+  float gal = exp(-(g.x * g.x / 0.0032 + g.y * g.y / 0.0006)) * 0.035
+            + exp(-dot(g, g) / 0.00008) * 0.12;
+  col += vec3(0.78, 0.82, 1.0) * (gal * fade * step(0.0, dot(d, uGalaxy)));
   return col;
 }
 
@@ -580,6 +597,23 @@ void main() {
 
   vec3 col = vec3(0.0);
   float T = 1.0;
+
+  // A small dark world in front of the disk, lit only by the glow around the hole.
+  vec3 oc = p - uPlanet.xyz;
+  float bq = dot(oc, v);
+  float cq = dot(oc, oc) - uPlanet.w * uPlanet.w;
+  float disc = bq * bq - cq;
+  if (disc > 0.0 && -bq - sqrt(disc) > 0.0) {
+    vec3 hp = p + v * (-bq - sqrt(disc));
+    vec3 n = normalize(hp - uPlanet.xyz);
+    vec3 L = normalize(-uPlanet.xyz);
+    float diff = max(dot(n, L), 0.0);
+    float rim = pow(1.0 - max(dot(n, -v), 0.0), 4.0);
+    vec3 pc = vec3(0.26, 0.30, 0.38) * (0.015 + 0.55 * diff * diff * diff)
+            + vec3(0.5, 0.65, 0.9) * (rim * 0.12 * (0.2 + diff));
+    gl_FragColor = vec4(enc(pc), 1.0);
+    return;
+  }
 
   if (b > B_SKIP) {
     // Far from the hole: weak-field deflection, applied analytically.
@@ -713,6 +747,7 @@ varying vec2 vUv;
 uniform sampler2D uScene;
 uniform sampler2D uBloom1;
 uniform sampler2D uBloom2;
+uniform sampler2D uBloom3;
 uniform float uTime;
 uniform float uEnc;
 uniform float uExposure;
@@ -736,11 +771,17 @@ void main() {
   c.b = dec(texture2D(uScene, vUv - ab).rgb).b;
   vec3 b1 = dec(texture2D(uBloom1, vUv).rgb);
   vec3 b2 = dec(texture2D(uBloom2, vUv).rgb);
-  c += (b1 * 0.35 + b2 * 0.15) * uBloom;
+  vec3 b3 = dec(texture2D(uBloom3, vUv).rgb);
+  // Tight glow, wide glow, and a very wide bluish veiling glare.
+  c += (b1 * 0.35 + b2 * 0.22 + b3 * vec3(0.16, 0.18, 0.22)) * uBloom;
   c *= uExposure;
   float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
   vec3 tmL = c * (aces(vec3(lum)).x / max(lum, 1e-4));
   c = clamp(mix(aces(c), tmL, 0.55), 0.0, 1.0);
+  // Grade: cool highlights, a navy lift in the darks.
+  float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  c = mix(c, c * vec3(0.92, 0.97, 1.08), smoothstep(0.45, 1.0, l));
+  c += vec3(0.010, 0.014, 0.026) * (1.0 - l);
   c *= 1.0 - 0.4 * smoothstep(0.12, 0.62, dot(q, q));
   c = pow(c, vec3(1.0 / 2.2));
   c += (hash(gl_FragCoord.xy + fract(uTime) * 61.0) - 0.5) * (2.0 / 255.0);
@@ -942,6 +983,8 @@ void main() {
     freeTarget(targets.b1b);
     freeTarget(targets.b2a);
     freeTarget(targets.b2b);
+    freeTarget(targets.b3a);
+    freeTarget(targets.b3b);
     targets = null;
   }
 
@@ -994,13 +1037,16 @@ void main() {
     destroyTargets();
     var q1w = Math.max(1, tw >> 2), q1h = Math.max(1, th >> 2);
     var q2w = Math.max(1, tw >> 4), q2h = Math.max(1, th >> 4);
+    var q3w = Math.max(1, tw >> 6), q3h = Math.max(1, th >> 6);
     targets = {
       scene: makeTarget(tw, th),
       hist: [makeTarget(tw, th), makeTarget(tw, th)],
       b1a: makeTarget(q1w, q1h),
       b1b: makeTarget(q1w, q1h),
       b2a: makeTarget(q2w, q2h),
-      b2b: makeTarget(q2w, q2h)
+      b2b: makeTarget(q2w, q2h),
+      b3a: makeTarget(q3w, q3h),
+      b3b: makeTarget(q3w, q3h)
     };
     ensureDiskTexture();
     histValid = false;
@@ -1010,7 +1056,7 @@ void main() {
   }
 
   // ---- Camera / interaction ----
-  var D = 24.0;
+  var D = 11.0;
   var tmx = 0, tmy = 0, mx = 0, my = 0;
   if (!coarse && !reduced) {
     window.addEventListener('pointermove', function (e) {
@@ -1075,6 +1121,28 @@ void main() {
     draw();
   }
 
+  // Camera basis for an inclination above the disk plane, an azimuth around
+  // the hole and a roll about the view axis.
+  function cameraBasis(incl, az, roll) {
+    var cp = [D * Math.cos(incl) * Math.sin(az), D * Math.sin(incl), D * Math.cos(incl) * Math.cos(az)];
+    var fwd = norm([-cp[0], -cp[1], -cp[2]]);
+    var right0 = norm(cross(fwd, [0, 1, 0]));
+    var up0 = cross(right0, fwd);
+    var cr = Math.cos(roll), sr = Math.sin(roll);
+    return {
+      cp: cp, fwd: fwd,
+      right: [right0[0] * cr + up0[0] * sr, right0[1] * cr + up0[1] * sr, right0[2] * cr + up0[2] * sr],
+      up: [-right0[0] * sr + up0[0] * cr, -right0[1] * sr + up0[1] * cr, -right0[2] * sr + up0[2] * cr]
+    };
+  }
+
+  // World-fixed props placed relative to the resting camera: a small planet
+  // in front of the disk's far side, and a faint galaxy behind everything.
+  var INCL0 = 9.0 * Math.PI / 180, ROLL0 = -22.0 * Math.PI / 180;
+  var base = cameraBasis(INCL0, 0, ROLL0);
+  var planetPos = [0, 1, 2].map(function (k) { return base.cp[k] + base.fwd[k] * 6.5 - base.right[k] * 3.3 + base.up[k] * 0.1; });
+  var galaxyDir = norm([0, 1, 2].map(function (k) { return base.fwd[k] - base.right[k] * 0.95 + base.up[k] * 0.6; }));
+
   var prevFwd = [0, 0, 0], prevUp = [0, 0, 0];
 
   function render(t) {
@@ -1082,18 +1150,12 @@ void main() {
     my += (tmy - my) * 0.05;
 
     var deg = Math.PI / 180;
-    var incl = (12.0 + 1.5 * Math.sin(t * 0.06) - my * 3.0) * deg;
+    var incl = INCL0 + (1.0 * Math.sin(t * 0.06) - my * 2.5) * deg;
     if (incl < 4 * deg) incl = 4 * deg;
-    var az = t * 0.004 + mx * 6.0 * deg;
-    var roll = 17.0 * deg;
-    var cp = [D * Math.cos(incl) * Math.sin(az), D * Math.sin(incl), D * Math.cos(incl) * Math.cos(az)];
-    var fwd = norm([-cp[0], -cp[1], -cp[2]]);
-    if (skyOnly) fwd = [-fwd[0], -fwd[1], -fwd[2]];   // debug: look away from the hole
-    var right0 = norm(cross(fwd, [0, 1, 0]));
-    var up0 = cross(right0, fwd);
-    var cr = Math.cos(roll), sr = Math.sin(roll);
-    var right = [right0[0] * cr + up0[0] * sr, right0[1] * cr + up0[1] * sr, right0[2] * cr + up0[2] * sr];
-    var up = [-right0[0] * sr + up0[0] * cr, -right0[1] * sr + up0[1] * cr, -right0[2] * sr + up0[2] * cr];
+    var az = t * 0.003 + mx * 4.0 * deg;
+    var cam = cameraBasis(incl, az, ROLL0);
+    var cp = cam.cp, fwd = cam.fwd, right = cam.right, up = cam.up;
+    if (skyOnly) { fwd = [-fwd[0], -fwd[1], -fwd[2]]; right = [-right[0], -right[1], -right[2]]; }   // debug: look away
 
     // Camera motion shortens the temporal history so nothing ghosts.
     var motion = dist(fwd, prevFwd) + dist(up, prevUp);
@@ -1102,9 +1164,9 @@ void main() {
 
     var sc = targets.scene;
     var aspect = sc.w / sc.h;
-    var focal = Math.max(aspect * 2.15, 1.6);
-    var centerFrac = aspect < 1 ? 0.40 : 0.45;   // hole centre, fraction from the top
-    var centerX = aspect < 1 ? 0.5 : 0.56;       // fraction from the left
+    var focal = Math.max(aspect * 1.25, 1.6);
+    var centerFrac = aspect < 1 ? 0.40 : 0.42;   // hole centre, fraction from the top
+    var centerX = aspect < 1 ? 0.5 : 0.70;       // fraction from the left
     var jit = jitters[frameIndex % jitters.length];
 
     // 0. Disk material texture for this instant: noise, orbital motion blur,
@@ -1118,7 +1180,7 @@ void main() {
     gl.uniform2f(diskBlur.u.uSize, diskTex.w, diskTex.h);
     bindTarget(diskTex.b);
     gl.uniform2f(diskBlur.u.uDir, 1, 0);
-    gl.uniform1f(diskBlur.u.uSigma, diskTex.w * 0.007);    // ~2.5 degrees of orbit at the inner edge
+    gl.uniform1f(diskBlur.u.uSigma, diskTex.w * 0.010);    // ~3.6 degrees of orbit at the inner edge
     bindTex(diskBlur.u.uTex, diskTex.a.tex, 0);
     draw();
     bindTarget(diskTex.c);
@@ -1149,6 +1211,8 @@ void main() {
     gl.uniform1f(trace.u.uHaze, 0.2);
     gl.uniform1f(trace.u.uPxPerRad, 0.5 * focal * sc.h);
     gl.uniform2f(trace.u.uDiskSize, diskTex.w, diskTex.h);
+    gl.uniform4f(trace.u.uPlanet, planetPos[0], planetPos[1], planetPos[2], 0.2);
+    gl.uniform3f(trace.u.uGalaxy, galaxyDir[0], galaxyDir[1], galaxyDir[2]);
     bindTex(trace.u.uDisk, diskTex.c.tex, 0);
     draw();
 
@@ -1167,12 +1231,15 @@ void main() {
     frameIndex++;
 
     // 3. Bloom: tight glow at 1/4 res, wide glow at 1/16 res.
-    downsample(next, targets.b1a, 0.8);
+    downsample(next, targets.b1a, 0.7);
     blurPass(targets.b1a, targets.b1b, 1.0);
     blurPass(targets.b1a, targets.b1b, 1.0);
     downsample(targets.b1a, targets.b2a, 0.0);
     blurPass(targets.b2a, targets.b2b, 1.5);
     blurPass(targets.b2a, targets.b2b, 1.5);
+    downsample(targets.b2a, targets.b3a, 0.0);
+    blurPass(targets.b3a, targets.b3b, 2.0);
+    blurPass(targets.b3a, targets.b3b, 2.0);
 
     // 4. Composite, tone map, vignette, grain.
     gl.useProgram(composite.p);
@@ -1185,6 +1252,7 @@ void main() {
     bindTex(composite.u.uScene, next.tex, 0);
     bindTex(composite.u.uBloom1, targets.b1a.tex, 1);
     bindTex(composite.u.uBloom2, targets.b2a.tex, 2);
+    bindTex(composite.u.uBloom3, targets.b3a.tex, 3);
     draw();
   }
 
