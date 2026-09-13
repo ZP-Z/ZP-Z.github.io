@@ -1,23 +1,17 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#02040a">
-  <meta name="description" content="Zipeng Blog is temporarily under construction.">
-  <title>Zipeng Blog 正在施工</title>
+  <meta name="description" content="Gargantua — a black hole rendered live in the browser.">
+  <title>Gargantua · Zipeng</title>
   <link rel="icon" href="mylogos/favicon.png">
   <style>
     :root {
       color-scheme: dark;
-      --ink: rgba(255, 255, 255, 0.9);
-      --soft: rgba(255, 255, 255, 0.68);
-      --muted: rgba(255, 255, 255, 0.5);
-      --faint: rgba(255, 255, 255, 0.3);
-      --line: rgba(255, 255, 255, 0.12);
-      --accent: #f3c67c;
       --space: #02040a;
     }
 
@@ -33,16 +27,11 @@
     body {
       min-height: 100vh;
       margin: 0;
-      color: var(--ink);
-      font-family: "Inter", "Helvetica Neue", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      color: rgba(255, 255, 255, 0.92);
+      font-family: "Inter", "Helvetica Neue", "Segoe UI", "SF Pro Display", Roboto, sans-serif;
       background: var(--space);
-      overflow-x: hidden;
+      overflow: hidden;
       -webkit-font-smoothing: antialiased;
-    }
-
-    a {
-      color: inherit;
-      text-decoration: none;
     }
 
     #gargantua {
@@ -64,31 +53,40 @@
       background: var(--space);
     }
 
-    .fallback::before {
+    .fallback-disk {
+      position: absolute;
+      left: 50%;
+      top: 47%;
+      width: 120vw;
+      height: 120vw;
+      transform: translate(-50%, -50%) rotate(17deg);
+    }
+
+    .fallback-disk::before {
       content: "";
       position: absolute;
       left: 50%;
-      top: 44%;
-      width: min(72vw, 820px);
-      height: min(72vw, 820px);
+      top: 50%;
+      width: 44%;
+      height: 44%;
       transform: translate(-50%, -50%);
       border-radius: 50%;
       background: radial-gradient(circle,
-        #000 0 26.5%,
-        #fff7e6 27%,
-        #ffd58f 28.5%,
-        rgba(255, 170, 70, 0.55) 31%,
-        rgba(255, 140, 50, 0.18) 36%,
+        #000 0 27%,
+        #fff5df 27.5%,
+        #ffd18a 29%,
+        rgba(255, 170, 70, 0.5) 31.5%,
+        rgba(255, 140, 50, 0.16) 36%,
         rgba(255, 120, 40, 0) 42%);
     }
 
-    .fallback::after {
+    .fallback-disk::after {
       content: "";
       position: absolute;
       left: 50%;
-      top: 45.5%;
-      width: 110vw;
-      height: min(16vw, 180px);
+      top: 51%;
+      width: 100%;
+      height: 11%;
       transform: translate(-50%, -50%);
       background: radial-gradient(ellipse at center,
         rgba(255, 246, 228, 1) 0%,
@@ -106,239 +104,65 @@
       display: block;
     }
 
-    .page {
-      position: relative;
+    .caption {
+      position: fixed;
+      left: clamp(24px, 5vw, 72px);
+      bottom: clamp(24px, 5vh, 56px);
       z-index: 1;
-      display: grid;
-      grid-template-rows: auto 1fr auto auto;
-      min-height: 100vh;
-      min-height: 100dvh;
-      padding: 26px clamp(20px, 5vw, 72px) 22px;
-      text-shadow: 0 1px 14px rgba(0, 0, 0, 0.75);
+      max-width: min(620px, 82vw);
+      pointer-events: none;
+      text-shadow: 0 2px 28px rgba(0, 0, 0, 0.85);
     }
 
-    .topbar,
-    .footer {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 24px;
-    }
-
-    .brand {
-      display: inline-flex;
-      align-items: center;
-      gap: 12px;
-      min-width: 0;
-    }
-
-    .brand-mark {
-      width: 40px;
-      height: 40px;
-      border-radius: 10px;
-      object-fit: cover;
-      background: #fff;
-      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 10px 30px rgba(0, 0, 0, 0.55);
-    }
-
-    .brand-name {
-      display: block;
-      font-size: 15px;
-      font-weight: 600;
-      letter-spacing: 0.01em;
-      line-height: 1.2;
-    }
-
-    .brand-subtitle {
-      display: block;
-      margin-top: 3px;
-      color: var(--muted);
-      font-size: 12.5px;
-    }
-
-    .status {
-      display: inline-flex;
-      align-items: center;
-      gap: 9px;
-      padding: 8px 14px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      background: rgba(6, 10, 20, 0.45);
-      -webkit-backdrop-filter: blur(12px);
-      backdrop-filter: blur(12px);
-      color: var(--soft);
-      font-size: 13px;
-      white-space: nowrap;
-    }
-
-    .status-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: var(--accent);
-      box-shadow: 0 0 0 4px rgba(243, 198, 124, 0.18), 0 0 14px rgba(243, 198, 124, 0.6);
-      animation: pulse 3.2s ease-in-out infinite;
-    }
-
-    @keyframes pulse {
-      0%, 100% { box-shadow: 0 0 0 4px rgba(243, 198, 124, 0.18), 0 0 14px rgba(243, 198, 124, 0.6); }
-      50% { box-shadow: 0 0 0 7px rgba(243, 198, 124, 0.08), 0 0 22px rgba(243, 198, 124, 0.85); }
-    }
-
-    .hero {
-      grid-row: 3;
-      align-self: end;
-      max-width: 660px;
-      padding: 48px 0 28px;
-    }
-
-    .eyebrow {
-      display: inline-flex;
-      align-items: center;
-      gap: 12px;
-      color: var(--accent);
-      font-size: 11.5px;
-      font-weight: 600;
-      letter-spacing: 0.3em;
-      text-transform: uppercase;
-    }
-
-    .eyebrow::before {
-      display: block;
-      width: 34px;
-      height: 1px;
-      background: linear-gradient(90deg, rgba(243, 198, 124, 0), var(--accent));
-      content: "";
-    }
-
-    h1 {
-      margin: 16px 0 0;
-      font-size: clamp(36px, 5.2vw, 58px);
-      font-weight: 600;
-      line-height: 1.08;
-      letter-spacing: -0.01em;
-    }
-
-    .lead {
-      max-width: 560px;
-      margin: 18px 0 0;
-      color: var(--soft);
-      font-size: 16px;
-      line-height: 1.9;
-    }
-
-    .note {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 22px;
-      max-width: 680px;
-      margin-top: 32px;
-    }
-
-    .note-item {
-      padding-top: 12px;
-      border-top: 1px solid var(--line);
-    }
-
-    .note-kicker {
-      color: var(--faint);
+    .caption-eyebrow {
+      color: rgba(255, 255, 255, 0.42);
       font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 0.22em;
+      font-weight: 500;
+      letter-spacing: 0.42em;
       text-transform: uppercase;
     }
 
-    .note-title {
-      margin-top: 7px;
-      color: rgba(255, 255, 255, 0.82);
-      font-size: 14px;
-      line-height: 1.5;
+    .caption-title {
+      margin: 14px 0 0;
+      color: rgba(255, 255, 255, 0.95);
+      font-size: clamp(32px, 4.6vw, 64px);
+      font-weight: 200;
+      letter-spacing: 0.22em;
+      line-height: 1;
+      text-transform: uppercase;
     }
 
-    .footer {
-      grid-row: 4;
-      padding-top: 16px;
-      border-top: 1px solid var(--line);
-      color: var(--faint);
-      font-size: 12.5px;
+    .caption-line {
+      margin: 18px 0 0;
+      color: rgba(255, 255, 255, 0.62);
+      font-size: clamp(14px, 1.25vw, 18px);
+      font-weight: 300;
+      letter-spacing: 0.07em;
+      line-height: 1.6;
     }
 
-    .credit {
-      text-align: right;
+    .caption-tech {
+      margin: 22px 0 0;
+      color: rgba(255, 255, 255, 0.3);
+      font-size: 10.5px;
+      font-weight: 500;
+      letter-spacing: 0.26em;
+      line-height: 1.8;
+      text-transform: uppercase;
     }
 
     @media (max-width: 760px) {
-      .page {
-        padding: 18px 20px 18px;
+      .caption {
+        max-width: 88vw;
       }
 
-      .topbar {
-        align-items: flex-start;
+      .caption-title {
+        letter-spacing: 0.16em;
       }
 
-      .brand-subtitle {
-        display: none;
-      }
-
-      .status {
-        padding: 7px 11px;
-        font-size: 12px;
-      }
-
-      .page {
-        background: linear-gradient(180deg,
-          rgba(2, 4, 10, 0) 0%,
-          rgba(2, 4, 10, 0) 48%,
-          rgba(2, 4, 10, 0.72) 68%,
-          rgba(2, 4, 10, 0.92) 100%);
-      }
-
-      .hero {
-        padding: 36px 0 18px;
-      }
-
-      h1 {
-        font-size: 34px;
-      }
-
-      .lead {
-        margin-top: 14px;
-        font-size: 14px;
-        line-height: 1.75;
-      }
-
-      .note {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 12px;
-        margin-top: 22px;
-      }
-
-      .note-item {
-        padding-top: 10px;
-      }
-
-      .note-kicker {
-        font-size: 10px;
-      }
-
-      .note-title {
-        font-size: 12px;
-      }
-
-      .footer {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 6px;
-      }
-
-      .credit {
-        text-align: left;
-      }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .status-dot {
-        animation: none;
+      .caption-tech {
+        font-size: 9.5px;
+        letter-spacing: 0.2em;
       }
     }
   </style>
@@ -351,51 +175,13 @@
 </head>
 <body>
   <canvas id="gargantua" aria-hidden="true"></canvas>
-  <div class="fallback" aria-hidden="true"></div>
+  <div class="fallback" aria-hidden="true"><div class="fallback-disk"></div></div>
 
-  <main class="page">
-    <header class="topbar" aria-label="Site header">
-      <a class="brand" href="/" aria-label="Zipeng Blog">
-        <img class="brand-mark" src="mylogos/favicon.png" alt="">
-        <span>
-          <span class="brand-name">Zipeng Blog</span>
-          <span class="brand-subtitle">Notes, research and sketches</span>
-        </span>
-      </a>
-      <div class="status" aria-label="Current status">
-        <span class="status-dot" aria-hidden="true"></span>
-        暂时关闭 · 内容归档中
-      </div>
-    </header>
-
-    <section class="hero" aria-labelledby="page-title">
-      <div class="eyebrow">Temporary pause · Gargantua</div>
-      <h1 id="page-title">Blog 正在施工</h1>
-      <p class="lead">
-        旧文章、图片和资料已经先收好，不会丢失。站点会暂停公开更新一段时间，
-        等内容重新整理完，再以更清爽的方式回来。
-      </p>
-
-      <div class="note" aria-label="Archive notes">
-        <div class="note-item">
-          <div class="note-kicker">Archive</div>
-          <div class="note-title">原有内容已保留在本地归档。</div>
-        </div>
-        <div class="note-item">
-          <div class="note-kicker">Status</div>
-          <div class="note-title">公开博客入口暂时关闭。</div>
-        </div>
-        <div class="note-item">
-          <div class="note-kicker">Updated</div>
-          <div class="note-title">2026.09.13</div>
-        </div>
-      </div>
-    </section>
-
-    <footer class="footer">
-      <span>© 2026 Zipeng Zhao · The archive is being reorganized.</span>
-      <span class="credit">实时渲染 · 史瓦西黑洞与开普勒吸积盘 · WebGL</span>
-    </footer>
+  <main class="caption" aria-label="Gargantua">
+    <div class="caption-eyebrow">Event horizon</div>
+    <h1 class="caption-title">Gargantua</h1>
+    <p class="caption-line">Light bends. Time slows. Nothing escapes.</p>
+    <p class="caption-tech">Schwarzschild geodesics · Keplerian accretion disk · Rendered live in WebGL</p>
   </main>
 
   <script id="vs" type="x-shader/x-vertex">
@@ -412,6 +198,7 @@ precision highp float;
 precision highp int;
 varying vec2 vUv;
 uniform vec2 uRes;
+uniform vec2 uJitter;
 uniform float uTime;
 uniform vec3 uCamPos;
 uniform vec3 uCamRight;
@@ -423,15 +210,17 @@ uniform float uEnc;
 uniform int uMaxSteps;
 uniform float uDoppler;
 uniform float uHaze;
+uniform float uPxPerUnit;
 
 // Units: Schwarzschild radius rs = 1 (M = 0.5). Black hole at the origin,
-// accretion disk in the y = 0 plane, camera slightly above the plane.
+// accretion disk in the y = 0 plane, camera a little above the plane.
 const float PI = 3.14159265358979;
-const float R_IN = 2.3;
-const float R_OUT = 12.0;
-const float B_SKIP = 13.5;
+const float TAU = 6.28318530717959;
+const float R_IN = 2.4;
+const float R_OUT = 12.5;
+const float B_SKIP = 14.0;
 const float R_ESC = 30.0;
-const int MAX_STEPS = 460;
+const int MAX_STEPS = 700;
 
 #ifdef ES3
 #define STEP_BOUND uMaxSteps
@@ -455,7 +244,7 @@ vec3 hash23(vec2 p) {
   return fract((p3.xxy + p3.yzz) * p3.zyx);
 }
 
-// Value noise, periodic along y with integer period py (so it tiles around the ring).
+// Value noise, periodic along y with integer period py (tiles around the ring).
 float vnoise(vec2 p, float py) {
   vec2 i = floor(p);
   vec2 f = fract(p);
@@ -469,56 +258,73 @@ float vnoise(vec2 p, float py) {
   return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
 }
 
-float fbm(vec2 p, float py) {
+float fbm(vec2 p, float py, int oct) {
   float v = 0.0;
   float a = 0.5;
-  for (int k = 0; k < 4; k++) {
+  float norm = 0.0;
+  for (int k = 0; k < 5; k++) {
+    if (k >= oct) break;
     v += a * vnoise(p, py);
+    norm += a;
     p = p * 2.0 + vec2(31.0, 0.0);
     py *= 2.0;
     a *= 0.5;
   }
-  return v;
+  return v / norm;
 }
 
 vec3 palette(float r) {
   float t = clamp((r - R_IN) / (R_OUT - R_IN), 0.0, 1.0);
-  vec3 c0 = vec3(1.00, 0.90, 0.74);
-  vec3 c1 = vec3(1.00, 0.64, 0.28);
+  vec3 c0 = vec3(1.00, 0.92, 0.78);
+  vec3 c1 = vec3(1.00, 0.66, 0.30);
   vec3 c2 = vec3(0.94, 0.36, 0.09);
   return t < 0.4 ? mix(c0, c1, t / 0.4) : mix(c1, c2, (t - 0.4) / 0.6);
 }
 
-// Keplerian differential rotation. Two noise layers are cross-faded so the
-// shear never winds up without bound.
-float streaks(float r, float phi) {
-  float omega = 0.85 * pow(r, -1.5);
-  float omega0 = 0.85 * pow(4.0, -1.5);
-  float P = 60.0;
+// Disk material texture in (radius, advected azimuth): long filaments,
+// orbiting knots and fine turbulence.
+float diskTex(float r, float phi, float seed) {
+  float streak = fbm(vec2(r * 3.2 + seed, phi * (10.0 / TAU)), 10.0, 4);
+  float clump  = fbm(vec2(r * 2.2 + 71.0 + seed, phi * (40.0 / TAU) + 3.0), 40.0, 3);
+  float fine   = fbm(vec2(r * 9.0 + 13.0 + seed, phi * (24.0 / TAU)), 24.0, 3);
+  float s = clamp((streak - 0.34) / 0.40, 0.0, 1.0);
+  float c = clamp((clump - 0.38) / 0.34, 0.0, 1.0);
+  float f = clamp((fine - 0.36) / 0.40, 0.0, 1.0);
+  return 0.28 + 0.75 * s * s + 1.0 * c * c * c + 0.2 * f * s;
+}
+
+float omegaAt(float r) {
+  return 1.25 * pow(r, -1.5);
+}
+
+// Keplerian differential rotation. Two texture layers are cross-faded so the
+// shear never winds up without bound; the blend is renormalised to keep contrast.
+float diskMaterial(float r, float phi) {
+  float omega = omegaAt(r);
+  float omega0 = omegaAt(3.5);
+  float P = 44.0;
   float tA = fract(uTime / P);
-  float tB = fract(uTime / P + 0.5);
+  float tB = fract(tA + 0.5);
   float sA = (tA - 0.5) * P;
   float sB = (tB - 0.5) * P;
   float wA = 1.0 - abs(tA - 0.5) * 2.0;
   float wB = 1.0 - wA;
   float base = phi + omega0 * uTime;
-  float PY = 10.0;
-  float k = PY / (2.0 * PI);
-  float x = r * 4.5;
-  float nA = fbm(vec2(x, (base + (omega - omega0) * sA) * k), PY);
-  float nB = fbm(vec2(x + 53.0, (base + (omega - omega0) * sB) * k), PY);
-  float n = 0.5 + (wA * (nA - 0.5) + wB * (nB - 0.5)) / sqrt(wA * wA + wB * wB);
-  float m = clamp((n - 0.3) / 0.45, 0.0, 1.0);
-  return 0.45 + 0.95 * m * sqrt(m);
+  float nA = diskTex(r, base + (omega - omega0) * sA, 0.0);
+  float nB = diskTex(r, base + (omega - omega0) * sB + 2.1, 37.0);
+  float m = 0.72 + (wA * (nA - 0.72) + wB * (nB - 0.72)) / sqrt(wA * wA + wB * wB);
+  return max(m, 0.04);
 }
 
 vec3 diskSample(vec3 hit, vec3 dir, out float alpha) {
   float r = length(hit.xz);
   float phi = atan(hit.z, hit.x);
-  float edgeIn = smoothstep(R_IN, R_IN + 0.12, r);
+  float edgeIn = smoothstep(R_IN, R_IN + 0.10, r);
   float edgeOut = 1.0 - smoothstep(R_OUT * 0.5, R_OUT, r);
-  float prof = pow(R_IN / r, 1.8);
-  float I = 4.2 * prof * edgeIn * edgeOut * streaks(r, phi);
+  float prof = pow(R_IN / r, 1.5);
+  float tex = diskMaterial(r, phi);
+  float I = 2.8 * prof * edgeIn * edgeOut * tex;
+  I += 1.8 * exp(-(r - R_IN) * 3.0) * edgeIn * (0.7 + 0.3 * tex);   // hot inner rim
 
   // Relativistic beaming of the orbiting gas (photon travels along -dir).
   float beta = sqrt(0.5 / r);
@@ -531,7 +337,7 @@ vec3 diskSample(vec3 hit, vec3 dir, out float alpha) {
   col = mix(col, col * vec3(0.86, 0.95, 1.18), clamp((s - 1.0) * 1.5, 0.0, 1.0));
   col = mix(col, col * vec3(1.12, 0.82, 0.62), clamp((1.0 - s) * 1.5, 0.0, 1.0));
 
-  alpha = 0.92 * edgeIn * edgeOut;
+  alpha = 0.95 * edgeIn * (1.0 - smoothstep(R_OUT * 0.35, R_OUT * 0.85, r));
   return col * I;
 }
 
@@ -542,35 +348,59 @@ vec2 octa(vec3 d) {
   return uv * 0.5 + 0.5;
 }
 
-vec3 starfield(vec3 d) {
-  vec2 uv = octa(d) * 150.0;
+// Point stars with a sharp core, a soft halo and spikes on the brightest.
+vec3 starLayer(vec2 unit, float cells, float density, float gain, float seed) {
+  vec2 uv = unit * cells;
   vec2 ci = floor(uv);
   vec2 f = uv - ci;
+  float pxc = uPxPerUnit / cells;          // pixels per cell
+  float sc = 0.8 / pxc;                    // core sigma (cells)
+  float sh = 3.6 / pxc;                    // halo sigma
+  float sl = 7.0 / pxc;                    // spike length
   vec3 col = vec3(0.0);
   for (int j = -1; j <= 1; j++) {
     for (int i = -1; i <= 1; i++) {
       vec2 o = vec2(float(i), float(j));
-      vec2 c = ci + o;
+      vec2 c = ci + o + seed;
       vec3 h = hash23(c);
-      if (h.z < 0.10) {
+      if (h.z < density) {
         vec2 sp = o + h.xy - f;
         float d2 = dot(sp, sp);
         float q = hash21(c + 19.7);
-        float br = 0.05 + pow(q, 8.0) * 1.3;
-        float sz = 0.035 + 0.02 * br;
-        float g = exp(-d2 / (sz * sz));
-        vec3 tint = mix(vec3(0.72, 0.82, 1.0), vec3(1.0, 0.9, 0.72), hash21(c + 5.1));
-        col += tint * (br * g);
+        float br = gain * (0.05 + pow(q, 10.0) * 2.0);
+        float core = exp(-d2 / (2.0 * sc * sc));
+        float halo = 0.06 * exp(-d2 / (2.0 * sh * sh));
+        float spike = 0.0;
+        if (q > 0.985) {
+          spike = 0.16 * (exp(-abs(sp.x) / sl - sp.y * sp.y / (2.0 * sc * sc))
+                        + exp(-abs(sp.y) / sl - sp.x * sp.x / (2.0 * sc * sc)));
+        }
+        vec3 tint = mix(vec3(0.70, 0.80, 1.00), vec3(1.00, 0.86, 0.66), hash21(c + 5.1));
+        col += tint * (br * (core + halo + spike));
       }
     }
   }
-  float band = 0.5 + 0.5 * d.y;
-  col += vec3(0.004, 0.007, 0.013) * (0.4 + 0.6 * band);
+  return col;
+}
+
+vec3 starfield(vec3 d) {
+  vec2 unit = octa(d);
+  vec3 col = starLayer(unit, 150.0, 0.14, 1.0, 0.0);
+  col += starLayer(unit, 420.0, 0.10, 0.12, 77.0);
+
+  // A faint, dusty band of unresolved stars behind everything.
+  vec3 nb = normalize(vec3(0.35, 1.0, -0.25));
+  float band = exp(-pow(dot(d, nb), 2.0) * 14.0);
+  float n1 = fbm(unit * 9.0 + 3.0, 4096.0, 4);
+  float n2 = fbm(unit * 23.0 + 11.0, 4096.0, 3);
+  vec3 dust = mix(vec3(0.05, 0.08, 0.16), vec3(0.17, 0.11, 0.07), n2);
+  col += dust * band * (0.15 + 0.85 * n1 * n1) * 0.18;
+  col += vec3(0.004, 0.006, 0.012) * (0.5 + 0.5 * n1);
   return col;
 }
 
 void main() {
-  vec2 ndc = (gl_FragCoord.xy / uRes) * 2.0 - 1.0 - uCenter;
+  vec2 ndc = ((gl_FragCoord.xy + uJitter) / uRes) * 2.0 - 1.0 - uCenter;
   float aspect = uRes.x / uRes.y;
   vec3 dir = normalize(uCamFwd * uFocal + uCamRight * (ndc.x * aspect) + uCamUp * ndc.y);
 
@@ -604,7 +434,7 @@ void main() {
       if (r2 < 1.0) break;
       if (r > R_ESC && dot(p, v) > 0.0) { escaped = true; break; }
 
-      float dt = clamp(r * 0.06, 0.02, 0.9);
+      float dt = clamp(r * 0.045, 0.012, 0.7);
       vec3 a = -1.5 * h2 * p / (r2 * r2 * r);
       v += a * dt;
       p += v * dt;
@@ -625,14 +455,16 @@ void main() {
       if (uHaze > 0.0) {
         float ay = abs(p.y);
         float rr = length(p.xz);
-        float H = 0.06 + 0.05 * rr;
-        if (ay < H && rr > R_IN * 0.85 && rr < R_OUT) {
+        float H = 0.05 + 0.06 * rr;
+        if (ay < H && rr > R_IN * 0.9 && rr < R_OUT) {
           float dn = 1.0 - ay / H;
           dn *= dn;
-          float pr = pow(R_IN / rr, 2.0)
-                   * (1.0 - smoothstep(R_OUT * 0.5, R_OUT, rr))
-                   * smoothstep(R_IN * 0.85, R_IN * 1.05, rr);
-          col += T * palette(rr) * (dn * pr * uHaze * dt);
+          float ph = atan(p.z, p.x) + omegaAt(rr) * uTime;
+          float n = vnoise(vec2(rr * 2.0, ph * (16.0 / TAU)), 16.0);
+          float pr = pow(R_IN / rr, 2.2)
+                   * (1.0 - smoothstep(R_OUT * 0.45, R_OUT, rr))
+                   * smoothstep(R_IN * 0.9, R_IN * 1.05, rr);
+          col += T * palette(rr) * (dn * pr * (0.45 + 0.9 * n) * uHaze * dt);
         }
       }
       prev = p;
@@ -641,6 +473,22 @@ void main() {
   }
 
   gl_FragColor = vec4(enc(col), 1.0);
+}
+  </script>
+
+  <script id="fs-resolve" type="x-shader/x-fragment">
+precision highp float;
+varying vec2 vUv;
+uniform sampler2D uCur;
+uniform sampler2D uHist;
+uniform float uAlpha;
+uniform float uEnc;
+vec3 dec(vec3 c) { return uEnc > 0.5 ? c * c * 12.0 : c; }
+vec3 enc(vec3 c) { return uEnc > 0.5 ? sqrt(max(c, 0.0) / 12.0) : c; }
+void main() {
+  vec3 c = dec(texture2D(uCur, vUv).rgb);
+  vec3 h = dec(texture2D(uHist, vUv).rgb);
+  gl_FragColor = vec4(enc(mix(h, c, uAlpha)), 1.0);
 }
   </script>
 
@@ -693,6 +541,7 @@ uniform float uTime;
 uniform float uEnc;
 uniform float uExposure;
 uniform float uBloom;
+uniform float uAberration;
 vec3 dec(vec3 c) { return uEnc > 0.5 ? c * c * 12.0 : c; }
 vec3 aces(vec3 x) {
   return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
@@ -703,18 +552,22 @@ float hash(vec2 p) {
   return fract((p3.x + p3.y) * p3.z);
 }
 void main() {
-  vec3 c = dec(texture2D(uScene, vUv).rgb);
+  vec2 q = vUv - 0.5;
+  vec2 ab = q * uAberration;
+  vec3 c;
+  c.r = dec(texture2D(uScene, vUv + ab).rgb).r;
+  c.g = dec(texture2D(uScene, vUv).rgb).g;
+  c.b = dec(texture2D(uScene, vUv - ab).rgb).b;
   vec3 b1 = dec(texture2D(uBloom1, vUv).rgb);
   vec3 b2 = dec(texture2D(uBloom2, vUv).rgb);
-  c += (b1 * 0.32 + b2 * 0.18) * uBloom;
+  c += (b1 * 0.30 + b2 * 0.16) * uBloom;
   c *= uExposure;
   float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
   vec3 tmL = c * (aces(vec3(lum)).x / max(lum, 1e-4));
-  c = clamp(mix(aces(c), tmL, 0.45), 0.0, 1.0);
-  vec2 q = vUv - 0.5;
-  c *= 1.0 - 0.42 * smoothstep(0.12, 0.62, dot(q, q));
+  c = clamp(mix(aces(c), tmL, 0.55), 0.0, 1.0);
+  c *= 1.0 - 0.4 * smoothstep(0.12, 0.62, dot(q, q));
   c = pow(c, vec3(1.0 / 2.2));
-  c += (hash(gl_FragCoord.xy + fract(uTime) * 61.0) - 0.5) * (2.5 / 255.0);
+  c += (hash(gl_FragCoord.xy + fract(uTime) * 61.0) - 0.5) * (2.0 / 255.0);
   gl_FragColor = vec4(c, 1.0);
 }
   </script>
@@ -725,6 +578,7 @@ void main() {
 
   var canvas = document.getElementById('gargantua');
   var root = document.documentElement;
+  var search = window.location.search || '';
   var mq = function (q) { return !!(window.matchMedia && window.matchMedia(q).matches); };
   var reduced = mq('(prefers-reduced-motion: reduce)');
   var coarse = mq('(pointer: coarse)');
@@ -770,7 +624,7 @@ void main() {
       hdrType = he.HALF_FLOAT_OES;
     }
   }
-  var hdr = hdrType !== null && !/[?&]ldr=1/.test(window.location.search);
+  var hdr = hdrType !== null && !/[?&]ldr=1/.test(search);
 
   function makeTarget(w, h) {
     var tex = gl.createTexture();
@@ -788,6 +642,8 @@ void main() {
     gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
     var ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.bindTexture(gl.TEXTURE_2D, null);
     return { tex: tex, fb: fb, w: w, h: h, ok: ok };
@@ -848,9 +704,10 @@ void main() {
     return { p: p, u: u };
   }
 
-  var trace, bright, blur, composite;
+  var trace, resolve, bright, blur, composite;
   try {
     trace = program('fs-trace');
+    resolve = program('fs-resolve');
     bright = program('fs-bright');
     blur = program('fs-blur');
     composite = program('fs-composite');
@@ -868,18 +725,25 @@ void main() {
   gl.disable(gl.BLEND);
 
   // ---- Targets / resolution ----
-  var quality = mobile ? 0.45 : 0.7;
-  var maxSteps = mobile ? 320 : 460;
+  var quality = mobile ? 0.7 : 1.0;
+  var maxSteps = mobile ? 420 : 700;
   var targets = null;
-  var needsRender = true;
+  var histIndex = 0;
+  var histValid = false;
+  var frameIndex = 0;
+  var lastW = 0, lastH = 0, lastDpr = 0;
 
   function destroyTargets() {
     if (!targets) return;
-    for (var k in targets) if (targets.hasOwnProperty(k)) freeTarget(targets[k]);
+    freeTarget(targets.scene);
+    freeTarget(targets.hist[0]);
+    freeTarget(targets.hist[1]);
+    freeTarget(targets.b1a);
+    freeTarget(targets.b1b);
+    freeTarget(targets.b2a);
+    freeTarget(targets.b2b);
     targets = null;
   }
-
-  var lastW = 0, lastH = 0, lastDpr = 0;
 
   function viewportSize() {
     var w = canvas.clientWidth || window.innerWidth || document.documentElement.clientWidth || 0;
@@ -901,13 +765,10 @@ void main() {
       return false;
     }
     lastW = cw; lastH = ch; lastDpr = dpr;
-    var outScale = Math.min(dpr, 1.5);
-    canvas.width = Math.max(1, Math.round(cw * outScale));
-    canvas.height = Math.max(1, Math.round(ch * outScale));
 
     var tw = Math.round(cw * dpr * quality);
     var th = Math.round(ch * dpr * quality);
-    var cap = mobile ? 700000 : 1500000;
+    var cap = mobile ? 1100000 : 2400000;
     if (tw * th > cap) {
       var s = Math.sqrt(cap / (tw * th));
       tw = Math.round(tw * s);
@@ -915,18 +776,23 @@ void main() {
     }
     tw = Math.max(32, tw);
     th = Math.max(32, th);
+    canvas.width = tw;
+    canvas.height = th;
 
     destroyTargets();
     var q1w = Math.max(1, tw >> 2), q1h = Math.max(1, th >> 2);
     var q2w = Math.max(1, tw >> 4), q2h = Math.max(1, th >> 4);
     targets = {
       scene: makeTarget(tw, th),
+      hist: [makeTarget(tw, th), makeTarget(tw, th)],
       b1a: makeTarget(q1w, q1h),
       b1b: makeTarget(q1w, q1h),
       b2a: makeTarget(q2w, q2h),
       b2b: makeTarget(q2w, q2h)
     };
-    needsRender = true;
+    histValid = false;
+    frameIndex = 0;
+    staticFramesLeft = STATIC_FRAMES;
     return true;
   }
 
@@ -948,6 +814,19 @@ void main() {
   function cross(a, b) {
     return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
   }
+  function dist(a, b) {
+    var x = a[0] - b[0], y = a[1] - b[1], z = a[2] - b[2];
+    return Math.sqrt(x * x + y * y + z * z);
+  }
+
+  // Sub-pixel jitter sequence for temporal anti-aliasing.
+  function halton(i, b) {
+    var f = 1, r = 0;
+    while (i > 0) { f /= b; r += f * (i % b); i = Math.floor(i / b); }
+    return r;
+  }
+  var jitters = [];
+  for (var ji = 1; ji <= 8; ji++) jitters.push([halton(ji, 2) - 0.5, halton(ji, 3) - 0.5]);
 
   function bindTarget(t) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, t ? t.fb : null);
@@ -983,65 +862,97 @@ void main() {
     draw();
   }
 
+  var prevFwd = [0, 0, 0], prevUp = [0, 0, 0];
+
   function render(t) {
     mx += (tmx - mx) * 0.05;
     my += (tmy - my) * 0.05;
 
-    var incl = (10.0 + 1.2 * Math.sin(t * 0.07) - my * 2.5) * Math.PI / 180;
-    if (incl < 3 * Math.PI / 180) incl = 3 * Math.PI / 180;
-    var az = (mx * 5.0) * Math.PI / 180;
+    var deg = Math.PI / 180;
+    var incl = (15.0 + 1.5 * Math.sin(t * 0.06) - my * 3.0) * deg;
+    if (incl < 4 * deg) incl = 4 * deg;
+    var az = t * 0.004 + mx * 6.0 * deg;
+    var roll = 17.0 * deg;
     var cp = [D * Math.cos(incl) * Math.sin(az), D * Math.sin(incl), D * Math.cos(incl) * Math.cos(az)];
     var fwd = norm([-cp[0], -cp[1], -cp[2]]);
-    var right = norm(cross(fwd, [0, 1, 0]));
-    var up = cross(right, fwd);
+    var right0 = norm(cross(fwd, [0, 1, 0]));
+    var up0 = cross(right0, fwd);
+    var cr = Math.cos(roll), sr = Math.sin(roll);
+    var right = [right0[0] * cr + up0[0] * sr, right0[1] * cr + up0[1] * sr, right0[2] * cr + up0[2] * sr];
+    var up = [-right0[0] * sr + up0[0] * cr, -right0[1] * sr + up0[1] * cr, -right0[2] * sr + up0[2] * cr];
+
+    // Camera motion shortens the temporal history so nothing ghosts.
+    var motion = dist(fwd, prevFwd) + dist(up, prevUp);
+    prevFwd = fwd; prevUp = up;
+    var alpha = histValid ? Math.min(0.9, 0.28 + motion * 320) : 1.0;
 
     var sc = targets.scene;
     var aspect = sc.w / sc.h;
-    var focal = Math.max(aspect * 1.8, 1.45);
-    var centerFrac = aspect < 1 ? 0.36 : 0.42;   // hole centre, fraction from the top
+    var focal = Math.max(aspect * 2.15, 1.6);
+    var centerFrac = aspect < 1 ? 0.40 : 0.45;   // hole centre, fraction from the top
+    var centerX = aspect < 1 ? 0.5 : 0.56;       // fraction from the left
+    var jit = jitters[frameIndex % jitters.length];
 
     // 1. Geodesic trace into the HDR scene target.
     gl.useProgram(trace.p);
     bindTarget(sc);
     gl.uniform2f(trace.u.uRes, sc.w, sc.h);
+    gl.uniform2f(trace.u.uJitter, jit[0], jit[1]);
     gl.uniform1f(trace.u.uTime, t);
     gl.uniform3f(trace.u.uCamPos, cp[0], cp[1], cp[2]);
     gl.uniform3f(trace.u.uCamRight, right[0], right[1], right[2]);
     gl.uniform3f(trace.u.uCamUp, up[0], up[1], up[2]);
     gl.uniform3f(trace.u.uCamFwd, fwd[0], fwd[1], fwd[2]);
     gl.uniform1f(trace.u.uFocal, focal);
-    gl.uniform2f(trace.u.uCenter, 0, (1 - centerFrac) * 2 - 1);
+    gl.uniform2f(trace.u.uCenter, centerX * 2 - 1, (1 - centerFrac) * 2 - 1);
     gl.uniform1f(trace.u.uEnc, encMode);
     gl.uniform1i(trace.u.uMaxSteps, maxSteps);
-    gl.uniform1f(trace.u.uDoppler, 0.3);
-    gl.uniform1f(trace.u.uHaze, 0.22);
+    gl.uniform1f(trace.u.uDoppler, 0.32);
+    gl.uniform1f(trace.u.uHaze, 0.2);
+    gl.uniform1f(trace.u.uPxPerUnit, 1.77 * focal * sc.h);
     draw();
 
-    // 2. Bloom: tight glow at 1/4 res, wide glow at 1/16 res.
-    downsample(sc, targets.b1a, 1.1);
+    // 2. Temporal accumulation (anti-aliasing).
+    var cur = targets.hist[histIndex];
+    var next = targets.hist[1 - histIndex];
+    gl.useProgram(resolve.p);
+    bindTarget(next);
+    gl.uniform1f(resolve.u.uAlpha, alpha);
+    gl.uniform1f(resolve.u.uEnc, encMode);
+    bindTex(resolve.u.uCur, sc.tex, 0);
+    bindTex(resolve.u.uHist, cur.tex, 1);
+    draw();
+    histIndex = 1 - histIndex;
+    histValid = true;
+    frameIndex++;
+
+    // 3. Bloom: tight glow at 1/4 res, wide glow at 1/16 res.
+    downsample(next, targets.b1a, 1.1);
     blurPass(targets.b1a, targets.b1b, 1.0);
     blurPass(targets.b1a, targets.b1b, 1.0);
     downsample(targets.b1a, targets.b2a, 0.0);
     blurPass(targets.b2a, targets.b2b, 1.5);
     blurPass(targets.b2a, targets.b2b, 1.5);
 
-    // 3. Composite, tone map, vignette, grain.
+    // 4. Composite, tone map, vignette, grain.
     gl.useProgram(composite.p);
     bindTarget(null);
     gl.uniform1f(composite.u.uTime, t);
     gl.uniform1f(composite.u.uEnc, encMode);
     gl.uniform1f(composite.u.uExposure, 1.0);
     gl.uniform1f(composite.u.uBloom, 1.0);
-    bindTex(composite.u.uScene, sc.tex, 0);
+    gl.uniform1f(composite.u.uAberration, 0.0016);
+    bindTex(composite.u.uScene, next.tex, 0);
     bindTex(composite.u.uBloom1, targets.b1a.tex, 1);
     bindTex(composite.u.uBloom2, targets.b2a.tex, 2);
     draw();
   }
 
-  // ---- Loop with adaptive resolution ----
+  // ---- Loop: 60 fps cap, adaptive resolution, static mode ----
+  var STATIC_FRAMES = 16;
+  var staticFramesLeft = STATIC_FRAMES;
   var t0 = performance.now();
-  var last = 0, frameAvg = 16, frames = 0;
-
+  var last = 0, lastDraw = 0, frameAvg = 16, frames = 0;
   var lost = false;
 
   function frame(now) {
@@ -1051,21 +962,22 @@ void main() {
       if (!resize()) return;
       last = 0;
     }
-    var t = reduced ? 0 : (now - t0) / 1000;
     if (reduced) {
-      // Static frame only; re-rendered when the viewport changes.
-      if (needsRender) { render(t); needsRender = false; }
+      // A converged still frame; re-rendered only when the viewport changes.
+      if (staticFramesLeft > 0) { render(0); staticFramesLeft--; }
       return;
     }
+    if (now - lastDraw < 15) return;
     if (last && now - last < 100) frameAvg = frameAvg * 0.9 + (now - last) * 0.1;
     last = now;
+    lastDraw = now;
     frames++;
-    if (frames > 60 && frames % 30 === 0 && frameAvg > 33 && quality > 0.3) {
-      quality = Math.max(0.3, quality - 0.08);
+    if (frames > 90 && frames % 30 === 0 && frameAvg > 30 && quality > 0.35) {
+      quality = Math.max(0.35, quality - 0.12);
       resize();
       frameAvg = 16;
     }
-    render(t);
+    render((now - t0) / 1000);
   }
 
   document.addEventListener('visibilitychange', function () { last = 0; });
@@ -1076,6 +988,10 @@ void main() {
   });
 
   requestAnimationFrame(frame);
+
+  if (/[?&]debug=1/.test(search)) {
+    window.__bh = { gl: gl, targets: function () { return targets; }, render: render, hdr: hdr, isGL2: isGL2, quality: function () { return quality; } };
+  }
 })();
   </script>
 </body>
