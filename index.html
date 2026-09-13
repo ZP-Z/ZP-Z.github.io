@@ -270,13 +270,17 @@ float material(float r, float psi, float seed, out float heat) {
                 gnoise(vec2(r * 0.9 + 41.0 + seed, psi * (5.0 / TAU) + 1.7), 5.0)) - 0.5;
   float rw = r + w.x * 0.35;
   float pw = psi + w.y * 0.4;
-  // Wide cirrus-like streaks along the orbit, no fine detail.
   float broad = fbm(vec2(rw * 1.2 + seed, pw * (6.0 / TAU)), 6.0, 3);
-  float mid = fbm(vec2(rw * 3.0 + seed + 7.0, pw * (9.0 / TAU)), 9.0, 2);
+  float wisp = fbm(vec2(rw * 2.8 + seed + 7.0, pw * (12.0 / TAU)), 12.0, 3);
   float p = smoothstep(0.3, 0.75, broad);
-  float m = smoothstep(0.3, 0.7, mid);
+  float c = smoothstep(0.36, 0.64, wisp);
+  // Dense and continuous near the hole; thinning into long, separate wisps
+  // further out, so the outer boundary breaks up into elongated clumps.
+  float dense = 1.0 - smoothstep(R_IN + 1.0, R_IN + 6.5, r);
+  float smoothTex = 0.7 + 0.3 * p + 0.12 * (c - 0.5);
+  float wispTex = 0.05 + 1.1 * c * (0.55 + 0.45 * p);
   heat = p;
-  return 0.45 + 0.65 * p + 0.35 * (m - 0.5);
+  return mix(wispTex, smoothTex, dense);
 }
 
 float omegaAt(float r) {
@@ -448,9 +452,9 @@ vec3 diskSample(vec3 hit, vec3 dir, float s, float turn, out float alpha) {
   float tex = tx.r * 4.0;
   float heat = tx.g;
 
-  float edgeIn = smoothstep(R_IN, R_IN + 0.25, r);
+  float edgeIn = smoothstep(R_IN, R_IN + 0.06, r);
   float edgeOut = 1.0 - smoothstep(R_OUT * 0.5, R_OUT, r);
-  float prof = pow(R_IN / r, 2.4);
+  float prof = pow(R_IN / r, 2.2);
   float I = 2.6 * prof * edgeIn * edgeOut * tex;
   I += 2.0 * exp(-(r - R_IN) * 1.0) * edgeIn * (0.7 + 0.3 * tex);   // hot inner region
 
@@ -624,13 +628,14 @@ void main() {
         float ay = abs(p.y);
         float rr = length(p.xz);
         float H = 0.05 + 0.06 * rr;
-        if (ay < H && rr > R_IN * 0.9 && rr < R_OUT) {
+        if (ay < H && rr > R_IN && rr < R_OUT) {
           float dn = 1.0 - ay / H;
           dn *= dn;
           float n = DISK_LOD(diskUv(rr, atan(p.z, p.x)), 3.0).r * 4.0;
+          // Only outside the inner edge, so rays falling into the shadow stay black.
           float pr = pow(R_IN / rr, 2.2)
                    * (1.0 - smoothstep(R_OUT * 0.45, R_OUT, rr))
-                   * smoothstep(R_IN * 0.9, R_IN * 1.05, rr);
+                   * smoothstep(R_IN, R_IN + 0.3, rr);
           col += T * palette(rr) * (dn * pr * (0.3 + 0.5 * n) * uHaze * dt);
         }
       }
