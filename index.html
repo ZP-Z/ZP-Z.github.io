@@ -275,16 +275,19 @@ float material(float r, float psi, float seed, out float heat) {
   float wisp2 = fbm(vec2(rw * 6.0 + seed + 50.0, pw * (16.0 / TAU)), 16.0, 3);
   float wisp3 = fbm(vec2(rw * 11.0 + seed + 90.0, pw * (26.0 / TAU)), 26.0, 2);
   float fine = fbm(vec2(rw * 7.0 + seed + 3.0, pw * (18.0 / TAU)), 18.0, 3);
+  float fine2 = fbm(vec2(rw * 14.0 + seed + 77.0, pw * (28.0 / TAU)), 28.0, 2);
   float p = smoothstep(0.3, 0.75, broad);
   float c = smoothstep(0.45, 0.62, wisp);
   float c2 = smoothstep(0.52, 0.68, wisp2);
   float c3 = smoothstep(0.55, 0.72, wisp3);
   float f = smoothstep(0.35, 0.7, fine);
-  // Dense and continuous near the hole, crossed by thin flow lines that the
-  // orbital blur draws out into long streaks. Beyond a few radii the gas is
-  // only separate elongated wisps at three scales, with dark gaps between them.
+  float f2 = smoothstep(0.4, 0.75, fine2);
+  // Dense and continuous near the hole, crossed by layered flow lines at two
+  // scales that the orbital blur draws out into long streaks. Beyond a few
+  // radii the gas is only separate elongated wisps at three scales, with
+  // dark gaps between them.
   float dense = 1.0 - smoothstep(R_IN + 0.8, R_IN + 3.5, r);
-  float smoothTex = 0.65 + 0.3 * p + 0.3 * (f - 0.5) + 0.1 * (c - 0.5);
+  float smoothTex = 0.6 + 0.3 * p + 0.4 * (f - 0.5) + 0.2 * (f2 - 0.5) + 0.1 * (c - 0.5);
   float wispTex = 0.02 + (1.1 * c + 0.7 * c2 + 0.5 * c3) * (0.45 + 0.55 * p) + 0.12 * f * c;
   heat = p;
   return mix(wispTex, smoothTex, dense);
@@ -310,10 +313,10 @@ void main() {
   float sB = (tB - 0.5) * P;
   float wA = 1.0 - abs(tA - 0.5) * 2.0;
   float wB = 1.0 - wA;
-  float base = phi + omega0 * uTime;
+  float base = phi - omega0 * uTime;
   float hA, hB;
-  float nA = material(r, base + (omega - omega0) * sA, 0.0, hA);
-  float nB = material(r, base + (omega - omega0) * sB + 2.1, 37.0, hB);
+  float nA = material(r, base - (omega - omega0) * sA, 0.0, hA);
+  float nB = material(r, base - (omega - omega0) * sB + 2.1, 37.0, hB);
   float k = 1.0 / sqrt(wA * wA + wB * wB);
   float m = 0.8 + (wA * (nA - 0.8) + wB * (nB - 0.8)) * k;
   float h = 0.3 + (wA * (hA - 0.3) + wB * (hB - 0.3)) * k;
@@ -434,15 +437,21 @@ float fbm(vec2 p, int oct) {
   return v / norm;
 }
 
-vec3 palette(float r) {
-  float t = clamp((r - R_IN) / (R_OUT - R_IN), 0.0, 1.0);
-  vec3 c0 = vec3(0.92, 0.95, 1.00);   // blue-white core
-  vec3 c1 = vec3(1.00, 0.86, 0.62);   // cream
-  vec3 c2 = vec3(0.78, 0.52, 0.28);   // tan
-  vec3 c3 = vec3(0.42, 0.44, 0.52);   // cool grey rim
-  if (t < 0.25) return mix(c0, c1, t / 0.25);
-  if (t < 0.6) return mix(c1, c2, (t - 0.25) / 0.35);
-  return mix(c2, c3, (t - 0.6) / 0.4);
+// Colour of the gas by radius; `shift` moves along the ramp so brighter
+// filaments read hotter and dim gaps cooler.
+vec3 palette(float r, float shift) {
+  float t = clamp((r - R_IN) / (R_OUT - R_IN) + shift, 0.0, 1.0);
+  vec3 c0 = vec3(0.90, 0.92, 1.00);   // blue-white core
+  vec3 c1 = vec3(1.00, 0.96, 0.86);   // warm white
+  vec3 c2 = vec3(1.00, 0.83, 0.52);   // golden cream
+  vec3 c3 = vec3(0.84, 0.56, 0.26);   // ochre
+  vec3 c4 = vec3(0.52, 0.38, 0.26);   // brown
+  vec3 c5 = vec3(0.30, 0.32, 0.40);   // cool grey-blue rim
+  if (t < 0.12) return mix(c0, c1, t / 0.12);
+  if (t < 0.3) return mix(c1, c2, (t - 0.12) / 0.18);
+  if (t < 0.5) return mix(c2, c3, (t - 0.3) / 0.2);
+  if (t < 0.75) return mix(c3, c4, (t - 0.5) / 0.25);
+  return mix(c4, c5, (t - 0.75) / 0.25);
 }
 
 vec2 diskUv(float r, float phi) {
@@ -475,11 +484,12 @@ vec3 diskSample(vec3 hit, vec3 dir, float s, float turn, out float alpha) {
 
   // Relativistic beaming of the orbiting gas (photon travels along -dir).
   float beta = sqrt(0.5 / r);
-  vec3 vel = vec3(hit.z, 0.0, -hit.x) / r * beta;
+  vec3 vel = vec3(-hit.z, 0.0, hit.x) / r * beta;
   float gam = 1.0 / sqrt(1.0 - beta * beta);
   float delta = 1.0 / (gam * (1.0 - dot(vel, -dir)));
   I *= pow(delta, 2.0 * uDoppler);
-  vec3 col = mix(palette(r), vec3(1.0, 0.97, 0.90), heat * 0.15);
+  vec3 col = palette(r, 0.12 - 0.22 * clamp(tex / 1.4, 0.0, 1.0));
+  col = mix(col, vec3(1.0, 0.97, 0.90), heat * 0.12);
   float sh = mix(1.0, delta, uDoppler);
   col = mix(col, col * vec3(0.86, 0.95, 1.18), clamp((sh - 1.0) * 1.5, 0.0, 1.0));
   col = mix(col, col * vec3(1.12, 0.82, 0.62), clamp((1.0 - sh) * 1.5, 0.0, 1.0));
@@ -572,7 +582,9 @@ vec3 starfield(vec3 d, float fade) {
   float n2 = fbm(unit * 23.0 + 11.0, 3);
   vec3 dust = mix(vec3(0.06, 0.10, 0.20), vec3(0.20, 0.13, 0.08), n2);
   col += dust * band * (0.15 + 0.85 * n1 * n1) * 0.05;
-  col += vec3(0.002, 0.003, 0.006) * (0.5 + 0.5 * n1);
+  // Deep blue rather than black, a touch lighter towards the top of the sky.
+  col += vec3(0.004, 0.007, 0.016) * (0.5 + 0.5 * n1);
+  col += vec3(0.005, 0.008, 0.018) * smoothstep(-0.2, 0.7, d.y);
 
   // A distant galaxy: a soft tilted ellipse with a brighter core.
   vec3 ga = normalize(cross(uGalaxy, vec3(0.0, 1.0, 0.0)));
@@ -689,7 +701,7 @@ void main() {
           float pr = pow(R_IN / rr, 2.2)
                    * (1.0 - smoothstep(R_OUT * 0.45, R_OUT, rr))
                    * smoothstep(R_IN, R_IN + 0.3, rr);
-          col += T * palette(rr) * (dn * pr * (0.3 + 0.5 * n) * uHaze * dt);
+          col += T * palette(rr, 0.0) * (dn * pr * (0.3 + 0.5 * n) * uHaze * dt);
         }
       }
       prev = p;
@@ -801,15 +813,20 @@ void main() {
   vec3 b2 = dec(texture2D(uBloom2, vUv).rgb);
   vec3 b3 = dec(texture2D(uBloom3, vUv).rgb);
   // Tight glow, wide glow, and a very wide bluish veiling glare.
-  c += (b1 * 0.35 + b2 * 0.22 + b3 * vec3(0.16, 0.18, 0.22)) * uBloom;
+  // Warm close glow, neutral mid glow, blue-violet veiling glare.
+  c += (b1 * vec3(0.36, 0.35, 0.33) + b2 * vec3(0.20, 0.21, 0.24) + b3 * vec3(0.12, 0.13, 0.22)) * uBloom;
   c *= uExposure;
+  // Film-like highlight roll-off: intense light loses its colour gradually
+  // rather than clipping channel by channel.
+  float lumH = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  c = mix(c, vec3(lumH), smoothstep(1.5, 6.0, lumH));
   float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
   vec3 tmL = c * (aces(vec3(lum)).x / max(lum, 1e-4));
   c = clamp(mix(aces(c), tmL, 0.55), 0.0, 1.0);
   // Grade: cool highlights, a navy lift in the darks.
   float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
   c = mix(c, c * vec3(0.92, 0.97, 1.08), smoothstep(0.45, 1.0, l));
-  c += vec3(0.010, 0.014, 0.026) * (1.0 - l);
+  c += vec3(0.012, 0.018, 0.034) * pow(1.0 - l, 3.0);
   c *= 1.0 - 0.4 * smoothstep(0.12, 0.62, dot(q, q));
   c = pow(c, vec3(1.0 / 2.2));
   c += (hash(gl_FragCoord.xy + fract(uTime) * 61.0) - 0.5) * (2.0 / 255.0);
@@ -1248,7 +1265,7 @@ void main() {
     gl.uniform1f(trace.u.uPxPerRad, 0.5 * focal * sc.h);
     gl.uniform2f(trace.u.uDiskSize, diskTex.w, diskTex.h);
     var planetPos = planetAt(t);
-    gl.uniform4f(trace.u.uPlanet, planetPos[0], planetPos[1], planetPos[2], 0.2);
+    gl.uniform4f(trace.u.uPlanet, planetPos[0], planetPos[1], planetPos[2], 0.12);
     gl.uniform3f(trace.u.uGalaxy, galaxyDir[0], galaxyDir[1], galaxyDir[2]);
     bindTex(trace.u.uDisk, diskTex.c.tex, 0);
     draw();
