@@ -8,7 +8,7 @@
   <meta name="theme-color" content="#02040a">
   <meta name="description" content="Gargantua — a black hole rendered live in the browser.">
   <title>Gargantua · Zipeng</title>
-  <link rel="icon" href="mylogos/favicon.png">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080c14'/%3E%3Ccircle cx='16' cy='16' r='8' fill='none' stroke='%23dcd4e4' stroke-width='2'/%3E%3Cpath d='M3 22L29 10' stroke='%23e6cba5' stroke-width='2'/%3E%3C/svg%3E">
   <style>
     :root {
       color-scheme: dark;
@@ -50,16 +50,18 @@
       z-index: 0;
       display: none;
       overflow: hidden;
-      background: var(--space);
+      background:
+        radial-gradient(ellipse at 82% 36%, rgba(148, 144, 172, 0.22), transparent 62%),
+        radial-gradient(ellipse at 40% 0%, #14212b, #05090d 72%);
     }
 
     .fallback-disk {
       position: absolute;
-      left: 50%;
-      top: 47%;
-      width: 120vw;
-      height: 120vw;
-      transform: translate(-50%, -50%) rotate(17deg);
+      left: 79%;
+      top: 40%;
+      width: max(140vw, 180vh);
+      height: max(140vw, 180vh);
+      transform: translate(-50%, -50%) rotate(-22deg);
     }
 
     .fallback-disk::before {
@@ -72,12 +74,16 @@
       transform: translate(-50%, -50%);
       border-radius: 50%;
       background: radial-gradient(circle,
-        #000 0 27%,
-        #fff5df 27.5%,
-        #ffd18a 29%,
-        rgba(255, 170, 70, 0.5) 31.5%,
-        rgba(255, 140, 50, 0.16) 36%,
-        rgba(255, 120, 40, 0) 42%);
+        #080c14 0 38%,
+        #343642 40%,
+        #cac5d4 40.5%,
+        #777583 41%,
+        #d5ced7 44%,
+        #f4ece3 46%,
+        #c6bac4 49%,
+        rgba(181, 156, 135, 0.5) 54%,
+        rgba(124, 128, 154, 0.20) 63%,
+        rgba(124, 128, 154, 0) 72%);
     }
 
     .fallback-disk::after {
@@ -86,13 +92,13 @@
       left: 50%;
       top: 51%;
       width: 100%;
-      height: 11%;
+      height: 8%;
       transform: translate(-50%, -50%);
       background: radial-gradient(ellipse at center,
-        rgba(255, 246, 228, 1) 0%,
-        rgba(255, 205, 130, 0.9) 18%,
-        rgba(255, 150, 70, 0.55) 40%,
-        rgba(255, 120, 50, 0) 70%);
+        rgba(244, 235, 229, 0.97) 0%,
+        rgba(224, 207, 186, 0.8) 18%,
+        rgba(157, 130, 93, 0.40) 40%,
+        rgba(114, 120, 134, 0) 70%);
       filter: blur(4px);
     }
 
@@ -109,7 +115,7 @@
       left: clamp(24px, 5vw, 72px);
       bottom: clamp(24px, 5vh, 56px);
       z-index: 1;
-      max-width: min(620px, 82vw);
+      max-width: min(540px, 82vw);
       pointer-events: none;
       text-shadow: 0 2px 28px rgba(0, 0, 0, 0.85);
     }
@@ -125,7 +131,7 @@
     .caption-title {
       margin: 14px 0 0;
       color: rgba(255, 255, 255, 0.95);
-      font-size: clamp(32px, 4.6vw, 64px);
+      font-size: clamp(30px, 3.4vw, 48px);
       font-weight: 200;
       letter-spacing: 0.22em;
       line-height: 1;
@@ -141,16 +147,6 @@
       line-height: 1.6;
     }
 
-    .caption-tech {
-      margin: 22px 0 0;
-      color: rgba(255, 255, 255, 0.3);
-      font-size: 10.5px;
-      font-weight: 500;
-      letter-spacing: 0.26em;
-      line-height: 1.8;
-      text-transform: uppercase;
-    }
-
     @media (max-width: 760px) {
       .caption {
         max-width: 88vw;
@@ -160,9 +156,11 @@
         letter-spacing: 0.16em;
       }
 
-      .caption-tech {
-        font-size: 9.5px;
-        letter-spacing: 0.2em;
+      .fallback-disk {
+        left: 58%;
+        top: 37%;
+        width: 125vh;
+        height: 125vh;
       }
     }
   </style>
@@ -181,7 +179,6 @@
     <div class="caption-eyebrow">Event horizon</div>
     <h1 class="caption-title">Gargantua</h1>
     <p class="caption-line">Light bends. Time slows. Nothing escapes.</p>
-    <p class="caption-tech">Schwarzschild geodesics · Keplerian accretion disk · Rendered live in WebGL</p>
   </main>
 
   <script id="vs" type="x-shader/x-vertex">
@@ -262,35 +259,28 @@ float ridged(vec2 p, float py, int oct) {
   return v / norm;
 }
 
-// Gas texture in (radius, advected azimuth): a smooth luminous sheet with
-// soft, domain-warped mottling, faint streaks along the orbit and a little
-// fine grain. Kept low-contrast; the orbital motion blur pass softens it further.
+// Gas in (radius, advected azimuth). Anisotropic noise stretches along the
+// orbit: broad folds carry many fine, irregular threads with dark gaps.
+// Radial warp stays small so the sheet reads as flowing silk, not clouds.
 float material(float r, float psi, float seed, out float heat) {
-  vec2 w = vec2(gnoise(vec2(r * 0.9 + seed, psi * (5.0 / TAU)), 5.0),
-                gnoise(vec2(r * 0.9 + 41.0 + seed, psi * (5.0 / TAU) + 1.7), 5.0)) - 0.5;
-  float rw = r + w.x * 0.35;
-  float pw = psi + w.y * 0.4;
-  float broad = fbm(vec2(rw * 1.2 + seed, pw * (6.0 / TAU)), 6.0, 3);
-  float wisp = fbm(vec2(rw * 3.5 + seed + 7.0, pw * (10.0 / TAU)), 10.0, 3);
-  float wisp2 = fbm(vec2(rw * 6.0 + seed + 50.0, pw * (16.0 / TAU)), 16.0, 3);
-  float wisp3 = fbm(vec2(rw * 11.0 + seed + 90.0, pw * (26.0 / TAU)), 26.0, 2);
-  float fine = fbm(vec2(rw * 7.0 + seed + 3.0, pw * (18.0 / TAU)), 18.0, 3);
-  float fine2 = fbm(vec2(rw * 14.0 + seed + 77.0, pw * (28.0 / TAU)), 28.0, 2);
-  float p = smoothstep(0.3, 0.75, broad);
-  float c = smoothstep(0.45, 0.62, wisp);
-  float c2 = smoothstep(0.52, 0.68, wisp2);
-  float c3 = smoothstep(0.55, 0.72, wisp3);
-  float f = smoothstep(0.35, 0.7, fine);
-  float f2 = smoothstep(0.4, 0.75, fine2);
-  // Dense and continuous near the hole, crossed by layered flow lines at two
-  // scales that the orbital blur draws out into long streaks. Beyond a few
-  // radii the gas is only separate elongated wisps at three scales, with
-  // dark gaps between them.
-  float dense = 1.0 - smoothstep(R_IN + 0.8, R_IN + 3.5, r);
-  float smoothTex = 0.6 + 0.3 * p + 0.4 * (f - 0.5) + 0.2 * (f2 - 0.5) + 0.1 * (c - 0.5);
-  float wispTex = 0.02 + (1.1 * c + 0.7 * c2 + 0.5 * c3) * (0.45 + 0.55 * p) + 0.12 * f * c;
-  heat = p;
-  return mix(wispTex, smoothTex, dense);
+  float warp = gnoise(vec2(r * 0.65 + seed, psi * (9.0 / TAU)), 9.0) - 0.5;
+  float ripple = gnoise(vec2(r * 7.0 + seed, psi * (32.0 / TAU)), 32.0) - 0.5;
+  float rw = r + warp * 0.12 + ripple * 0.035;
+  float pw = psi + warp * 0.08;
+  float broad = fbm(vec2(rw * 1.1 + seed, pw * (12.0 / TAU)), 12.0, 3);
+  float folds = fbm(vec2(rw * 8.0 + seed + 7.0, pw * (48.0 / TAU)), 48.0, 3);
+  float threads = fbm(vec2(rw * 38.0 + seed + 41.0, pw * (100.0 / TAU)), 100.0, 3);
+  float fine = gnoise(vec2(rw * 92.0 + seed + 91.0, pw * (160.0 / TAU)), 160.0);
+  float p = smoothstep(0.28, 0.74, broad);
+  float ribbons = smoothstep(0.35, 0.68, folds);
+  float fibers = smoothstep(0.40, 0.69, threads);
+  float hair = smoothstep(0.47, 0.72, fine);
+  float dense = 1.0 - smoothstep(R_IN + 0.4, R_IN + 3.0, r);
+  float sheet = 0.32 + 0.26 * p + 0.18 * ribbons + 0.52 * fibers + 0.22 * hair;
+  float wisps = 0.018 + (0.28 * ribbons + 0.85 * fibers + 0.42 * hair)
+                       * (0.20 + 0.80 * p) * (0.35 + 0.65 * ribbons);
+  heat = clamp(0.6 * p + 0.4 * fibers, 0.0, 1.0);
+  return mix(wisps, sheet, dense);
 }
 
 float omegaAt(float r) {
@@ -303,7 +293,7 @@ void main() {
   float r = R_IN + uv.y * (R_OUT - R_IN);
 
   // Keplerian differential rotation. Two layers are cross-faded so the shear
-  // never winds up without bound; the blend is renormalised to keep contrast.
+  // never winds up without bound, with no brightness jump at the wrap.
   float omega = omegaAt(r);
   float omega0 = omegaAt(3.5);
   float P = 44.0;
@@ -317,9 +307,9 @@ void main() {
   float hA, hB;
   float nA = material(r, base - (omega - omega0) * sA, 0.0, hA);
   float nB = material(r, base - (omega - omega0) * sB + 2.1, 37.0, hB);
-  float k = 1.0 / sqrt(wA * wA + wB * wB);
-  float m = 0.8 + (wA * (nA - 0.8) + wB * (nB - 0.8)) * k;
-  float h = 0.3 + (wA * (hA - 0.3) + wB * (hB - 0.3)) * k;
+  // Linear blending keeps the radial brightness profile stable over the cycle.
+  float m = wA * nA + wB * nB;
+  float h = wA * hA + wB * hB;
   gl_FragColor = vec4(clamp(m, 0.0, 4.0) * 0.25, clamp(h, 0.0, 1.0), 0.0, 1.0);
 }
   </script>
@@ -441,17 +431,17 @@ float fbm(vec2 p, int oct) {
 // filaments read hotter and dim gaps cooler.
 vec3 palette(float r, float shift) {
   float t = clamp((r - R_IN) / (R_OUT - R_IN) + shift, 0.0, 1.0);
-  vec3 c0 = vec3(0.90, 0.92, 1.00);   // blue-white core
-  vec3 c1 = vec3(1.00, 0.96, 0.86);   // warm white
-  vec3 c2 = vec3(1.00, 0.83, 0.52);   // golden cream
-  vec3 c3 = vec3(0.84, 0.56, 0.26);   // ochre
-  vec3 c4 = vec3(0.52, 0.38, 0.26);   // brown
-  vec3 c5 = vec3(0.30, 0.32, 0.40);   // cool grey-blue rim
-  if (t < 0.12) return mix(c0, c1, t / 0.12);
-  if (t < 0.3) return mix(c1, c2, (t - 0.12) / 0.18);
-  if (t < 0.5) return mix(c2, c3, (t - 0.3) / 0.2);
-  if (t < 0.75) return mix(c3, c4, (t - 0.5) / 0.25);
-  return mix(c4, c5, (t - 0.75) / 0.25);
+  vec3 c0 = vec3(0.86, 0.84, 1.00);   // pearl / lavender
+  vec3 c1 = vec3(1.00, 0.94, 0.87);   // ivory
+  vec3 c2 = vec3(0.94, 0.76, 0.55);   // muted champagne
+  vec3 c3 = vec3(0.66, 0.47, 0.31);   // dusty gold
+  vec3 c4 = vec3(0.32, 0.29, 0.32);   // mauve ash
+  vec3 c5 = vec3(0.22, 0.29, 0.37);   // blue-grey feathered rim
+  if (t < 0.16) return mix(c0, c1, smoothstep(0.0, 0.16, t));
+  if (t < 0.36) return mix(c1, c2, smoothstep(0.16, 0.36, t));
+  if (t < 0.58) return mix(c2, c3, smoothstep(0.36, 0.58, t));
+  if (t < 0.80) return mix(c3, c4, smoothstep(0.58, 0.80, t));
+  return mix(c4, c5, smoothstep(0.80, 1.0, t));
 }
 
 vec2 diskUv(float r, float phi) {
@@ -476,11 +466,14 @@ vec3 diskSample(vec3 hit, vec3 dir, float s, float turn, out float alpha) {
   float tex = tx.r * 4.0;
   float heat = tx.g;
 
-  float edgeIn = smoothstep(R_IN, R_IN + 0.06, r);
-  float edgeOut = 1.0 - smoothstep(R_OUT * 0.5, R_OUT, r);
-  float prof = pow(R_IN / r, 2.2);
-  float I = 2.8 * prof * edgeIn * edgeOut * tex;
-  I += 2.0 * exp(-(r - R_IN) * 1.0) * edgeIn * (0.7 + 0.3 * tex);   // hot inner region
+  float edgeIn = smoothstep(R_IN, R_IN + 0.12, r);
+  float edgeOut = 1.0 - smoothstep(R_OUT * 0.60, R_OUT, r);
+  float prof = pow(R_IN / r, 1.85);
+  float I = 2.1 * prof * edgeIn * edgeOut * tex;
+  // Let threads modulate the hot inner sheet as well; a constant white floor
+  // otherwise hides them when the highlights roll off.
+  I += 0.85 * exp(-(r - R_IN) * 0.85) * edgeIn * (0.18 + 0.82 * tex);
+  I *= mix(1.0, 0.55, smoothstep(2.4, 3.1, turn));
 
   // Relativistic beaming of the orbiting gas (photon travels along -dir).
   float beta = sqrt(0.5 / r);
@@ -488,7 +481,7 @@ vec3 diskSample(vec3 hit, vec3 dir, float s, float turn, out float alpha) {
   float gam = 1.0 / sqrt(1.0 - beta * beta);
   float delta = 1.0 / (gam * (1.0 - dot(vel, -dir)));
   I *= pow(delta, 2.0 * uDoppler);
-  vec3 col = palette(r, 0.12 - 0.22 * clamp(tex / 1.4, 0.0, 1.0));
+  vec3 col = palette(r, 0.045 - 0.10 * clamp(tex / 1.4, 0.0, 1.0));
   col = mix(col, vec3(1.0, 0.97, 0.90), heat * 0.12);
   float sh = mix(1.0, delta, uDoppler);
   col = mix(col, col * vec3(0.86, 0.95, 1.18), clamp((sh - 1.0) * 1.5, 0.0, 1.0));
@@ -574,17 +567,17 @@ vec3 starfield(vec3 d, float fade) {
   vec3 nb = normalize(vec3(0.8, 0.55, -0.35));
   float band = exp(-pow(dot(d, nb), 2.0) * 12.0);
 
-  vec3 col = starLayer(d, unit, 120.0, 0.05, 0.7, 0.0, 0.5);
-  col += starLayer(d, unit, 160.0, 0.12, 0.25 * band, 31.0, 1.0);
-  col *= fade;
+  vec3 col = starLayer(d, unit, 120.0, 0.035, 0.3, 0.0, 0.5);
+  col += starLayer(d, unit, 160.0, 0.09, 0.12 * band, 31.0, 1.0);
+  col *= fade * 0.20;
 
   float n1 = fbm(unit * 9.0 + 3.0, 4);
   float n2 = fbm(unit * 23.0 + 11.0, 3);
   vec3 dust = mix(vec3(0.06, 0.10, 0.20), vec3(0.20, 0.13, 0.08), n2);
   col += dust * band * (0.15 + 0.85 * n1 * n1) * 0.05;
   // Deep blue rather than black, a touch lighter towards the top of the sky.
-  col += vec3(0.004, 0.007, 0.016) * (0.5 + 0.5 * n1);
-  col += vec3(0.005, 0.008, 0.018) * smoothstep(-0.2, 0.7, d.y);
+  col += vec3(0.0015, 0.0030, 0.0048) * (0.5 + 0.5 * n1);
+  col += vec3(0.002, 0.004, 0.006) * smoothstep(-0.2, 0.7, d.y);
 
   // A distant galaxy: a soft tilted ellipse with a brighter core.
   vec3 ga = normalize(cross(uGalaxy, vec3(0.0, 1.0, 0.0)));
@@ -629,8 +622,8 @@ void main() {
       vec3 L = normalize(-uPlanet.xyz);
       float diff = max(dot(n, L), 0.0);
       float rim = pow(1.0 - max(dot(n, -v), 0.0), 4.0);
-      planetCol = vec3(0.26, 0.30, 0.38) * (0.015 + 0.55 * diff * diff * diff)
-                + vec3(0.5, 0.65, 0.9) * (rim * 0.12 * (0.2 + diff));
+      planetCol = vec3(0.26, 0.30, 0.38) * (0.008 + 0.16 * diff * diff * diff)
+                + vec3(0.5, 0.65, 0.9) * (rim * 0.055 * (0.2 + diff));
     }
   }
 
@@ -692,7 +685,7 @@ void main() {
       if (uHaze > 0.0) {
         float ay = abs(p.y);
         float rr = length(p.xz);
-        float H = 0.05 + 0.06 * rr;
+        float H = 0.07 + 0.075 * rr;
         if (ay < H && rr > R_IN && rr < R_OUT) {
           float dn = 1.0 - ay / H;
           dn *= dn;
@@ -749,7 +742,11 @@ void main() {
          + dec(texture2D(uTex, vUv + uTexel * vec2( 1.0,  1.0)).rgb);
   s *= 0.25;
   float l = max(max(s.r, s.g), s.b);
-  float k = max(l - uThreshold, 0.0) / max(l, 1e-4);
+  // A soft knee lets dimmer gold threads join the halo without a visible edge.
+  float knee = max(uThreshold * 0.6, 1e-4);
+  float soft = clamp(l - uThreshold + knee, 0.0, 2.0 * knee);
+  soft = soft * soft / (4.0 * knee);
+  float k = max(l - uThreshold, soft) / max(l, 1e-4);
   gl_FragColor = vec4(enc(s * k), 1.0);
 }
   </script>
@@ -797,7 +794,7 @@ float hash(vec2 p) {
 // Slight film-like soft focus: takes the edge off sub-pixel lines such as
 // the photon ring without blurring the image as a whole.
 vec3 soft(vec2 uv) {
-  vec2 o = uTexel * 0.75;
+  vec2 o = uTexel * 1.05;
   return dec(texture2D(uScene, uv).rgb) * 0.4
        + (dec(texture2D(uScene, uv + o).rgb) + dec(texture2D(uScene, uv - o).rgb)
         + dec(texture2D(uScene, uv + vec2(o.x, -o.y)).rgb) + dec(texture2D(uScene, uv + vec2(-o.x, o.y)).rgb)) * 0.15;
@@ -812,24 +809,25 @@ void main() {
   vec3 b1 = dec(texture2D(uBloom1, vUv).rgb);
   vec3 b2 = dec(texture2D(uBloom2, vUv).rgb);
   vec3 b3 = dec(texture2D(uBloom3, vUv).rgb);
-  // Tight glow, wide glow, and a very wide bluish veiling glare.
-  // Warm close glow, neutral mid glow, blue-violet veiling glare.
-  c += (b1 * vec3(0.36, 0.35, 0.33) + b2 * vec3(0.20, 0.21, 0.24) + b3 * vec3(0.12, 0.13, 0.22)) * uBloom;
+  // Optical scattering: a small ivory glow, soft middle halo and a very wide
+  // lavender veil. They are added in linear light, before the highlight roll-off.
+  c += (b1 * vec3(0.54, 0.51, 0.52) + b2 * vec3(0.36, 0.34, 0.39)
+      + b3 * vec3(0.38, 0.37, 0.48)) * uBloom;
   c *= uExposure;
   // Film-like highlight roll-off: intense light loses its colour gradually
   // rather than clipping channel by channel.
   float lumH = dot(c, vec3(0.2126, 0.7152, 0.0722));
-  c = mix(c, vec3(lumH), smoothstep(1.5, 6.0, lumH));
+  c = mix(c, vec3(lumH) * vec3(1.00, 0.97, 1.02), smoothstep(0.9, 5.0, lumH) * 0.78);
   float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
   vec3 tmL = c * (aces(vec3(lum)).x / max(lum, 1e-4));
   c = clamp(mix(aces(c), tmL, 0.55), 0.0, 1.0);
   // Grade: cool highlights, a navy lift in the darks.
   float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
-  c = mix(c, c * vec3(0.92, 0.97, 1.08), smoothstep(0.45, 1.0, l));
-  c += vec3(0.012, 0.018, 0.034) * pow(1.0 - l, 3.0);
-  c *= 1.0 - 0.4 * smoothstep(0.12, 0.62, dot(q, q));
-  c = pow(c, vec3(1.0 / 2.2));
-  c += (hash(gl_FragCoord.xy + fract(uTime) * 61.0) - 0.5) * (2.0 / 255.0);
+  c = mix(c, c * vec3(0.97, 0.96, 1.02), smoothstep(0.45, 1.0, l));
+  c += vec3(0.0028, 0.0044, 0.0065) * pow(1.0 - l, 3.0);
+  c *= 1.0 - 0.26 * smoothstep(0.12, 0.72, dot(q, q));
+  c = pow(max(c, 0.0), vec3(1.0 / 2.2)) * 0.94;
+  c += (hash(gl_FragCoord.xy + fract(uTime) * 61.0) - 0.5) * (1.25 / 255.0);
   gl_FragColor = vec4(c, 1.0);
 }
   </script>
@@ -1183,13 +1181,13 @@ void main() {
   }
 
   // A faint galaxy fixed in the sky, placed relative to the resting camera.
-  var INCL0 = 9.0 * Math.PI / 180, ROLL0 = -22.0 * Math.PI / 180;
+  var INCL0 = 7.5 * Math.PI / 180, ROLL0 = -22.0 * Math.PI / 180;
   var base = cameraBasis(INCL0, 0, ROLL0);
   var galaxyDir = norm([0, 1, 2].map(function (k) { return base.fwd[k] - base.right[k] * 0.95 + base.up[k] * 0.6; }));
 
-  // A small planet on a slightly inclined Keplerian orbit just outside the
-  // bright part of the disk; it starts to the left of the hole.
-  var PLANET_R = 8.5, PLANET_INC = 12.0 * Math.PI / 180;
+  // A small planet on an inclined Keplerian orbit, above the luminous sheet
+  // and just left of the upper arc in the resting composition.
+  var PLANET_R = 5.4, PLANET_INC = 20.0 * Math.PI / 180;
   function planetAt(t) {
     var ph = Math.PI + t * 1.25 * Math.pow(PLANET_R, -1.5);
     return [PLANET_R * Math.cos(ph), -PLANET_R * Math.sin(PLANET_INC) * Math.cos(ph), PLANET_R * Math.sin(ph)];
@@ -1202,9 +1200,9 @@ void main() {
     my += (tmy - my) * 0.05;
 
     var deg = Math.PI / 180;
-    var incl = INCL0 + (1.0 * Math.sin(t * 0.06) - my * 2.5) * deg;
+    var incl = INCL0 + (0.5 * Math.sin(t * 0.04) - my * 1.5) * deg;
     if (incl < 4 * deg) incl = 4 * deg;
-    var az = t * 0.003 + mx * 4.0 * deg;
+    var az = t * 0.0015 + mx * 2.5 * deg;
     var cam = cameraBasis(incl, az, ROLL0);
     var cp = cam.cp, fwd = cam.fwd, right = cam.right, up = cam.up;
     if (skyOnly) { fwd = [-fwd[0], -fwd[1], -fwd[2]]; right = [-right[0], -right[1], -right[2]]; }   // debug: look away
@@ -1216,9 +1214,9 @@ void main() {
 
     var sc = targets.scene;
     var aspect = sc.w / sc.h;
-    var focal = Math.max(aspect * 1.2, 1.6);
-    var centerFrac = aspect < 1 ? 0.40 : 0.42;   // hole centre, fraction from the top
-    var centerX = aspect < 1 ? 0.5 : 0.70;       // fraction from the left
+    var focal = aspect < 1 ? 1.85 : Math.max(aspect * 1.72, 2.8);
+    var centerFrac = 0.37;                    // hole centre, fraction from the top
+    var centerX = aspect < 1 ? 0.58 : 0.83;    // space on the left for the gold sweep
     if (zoomDbg) { focal *= 3.5; centerFrac = 0.5; centerX = 0.5; }   // debug: magnify the shadow edge
     var jit = jitters[frameIndex % jitters.length];
 
@@ -1233,12 +1231,12 @@ void main() {
     gl.uniform2f(diskBlur.u.uSize, diskTex.w, diskTex.h);
     bindTarget(diskTex.b);
     gl.uniform2f(diskBlur.u.uDir, 1, 0);
-    gl.uniform1f(diskBlur.u.uSigma, diskTex.w * 0.010);    // ~3.6 degrees of orbit at the inner edge
+    gl.uniform1f(diskBlur.u.uSigma, diskTex.w * 0.003);    // retain the breaks between fine orbital threads
     bindTex(diskBlur.u.uTex, diskTex.a.tex, 0);
     draw();
     bindTarget(diskTex.c);
     gl.uniform2f(diskBlur.u.uDir, 0, 1);
-    gl.uniform1f(diskBlur.u.uSigma, diskTex.h * 0.002);    // ~2 texels radially
+    gl.uniform1f(diskBlur.u.uSigma, 0.55);                // preserve radial separation between threads
     bindTex(diskBlur.u.uTex, diskTex.b.tex, 0);
     draw();
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -1260,8 +1258,8 @@ void main() {
     gl.uniform2f(trace.u.uCenter, centerX * 2 - 1, (1 - centerFrac) * 2 - 1);
     gl.uniform1f(trace.u.uEnc, encMode);
     gl.uniform1i(trace.u.uMaxSteps, maxSteps);
-    gl.uniform1f(trace.u.uDoppler, 0.25);
-    gl.uniform1f(trace.u.uHaze, 0.2);
+    gl.uniform1f(trace.u.uDoppler, 0.18);
+    gl.uniform1f(trace.u.uHaze, 0.32);
     gl.uniform1f(trace.u.uPxPerRad, 0.5 * focal * sc.h);
     gl.uniform2f(trace.u.uDiskSize, diskTex.w, diskTex.h);
     var planetPos = planetAt(t);
@@ -1284,10 +1282,10 @@ void main() {
     histValid = true;
     frameIndex++;
 
-    // 3. Bloom: tight glow at 1/4 res, wide glow at 1/16 res.
-    downsample(next, targets.b1a, 0.7);
-    blurPass(targets.b1a, targets.b1b, 1.0);
-    blurPass(targets.b1a, targets.b1b, 1.0);
+    // 3. Bloom: close glow at 1/4, middle halo at 1/16, wide veil at 1/64.
+    downsample(next, targets.b1a, 0.5);
+    blurPass(targets.b1a, targets.b1b, 1.5);
+    blurPass(targets.b1a, targets.b1b, 1.5);
     downsample(targets.b1a, targets.b2a, 0.0);
     blurPass(targets.b2a, targets.b2b, 1.5);
     blurPass(targets.b2a, targets.b2b, 1.5);
@@ -1300,9 +1298,9 @@ void main() {
     bindTarget(null);
     gl.uniform1f(composite.u.uTime, t);
     gl.uniform1f(composite.u.uEnc, encMode);
-    gl.uniform1f(composite.u.uExposure, 1.15);
+    gl.uniform1f(composite.u.uExposure, 1.05);
     gl.uniform1f(composite.u.uBloom, 1.0);
-    gl.uniform1f(composite.u.uAberration, 0.0006);
+    gl.uniform1f(composite.u.uAberration, 0.00015);
     gl.uniform2f(composite.u.uTexel, 1 / next.w, 1 / next.h);
     bindTex(composite.u.uScene, next.tex, 0);
     bindTex(composite.u.uBloom1, targets.b1a.tex, 1);
