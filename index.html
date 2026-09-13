@@ -262,20 +262,21 @@ float ridged(vec2 p, float py, int oct) {
   return v / norm;
 }
 
-// Gas texture in (radius, advected azimuth): domain-warped patches,
-// filaments stretched along the orbit, fine turbulence.
+// Gas texture in (radius, advected azimuth): a smooth luminous sheet with
+// soft, domain-warped mottling, faint streaks along the orbit and a little
+// fine grain. Kept low-contrast; the orbital motion blur pass softens it further.
 float material(float r, float psi, float seed, out float heat) {
   vec2 w = vec2(gnoise(vec2(r * 0.9 + seed, psi * (5.0 / TAU)), 5.0),
                 gnoise(vec2(r * 0.9 + 41.0 + seed, psi * (5.0 / TAU) + 1.7), 5.0)) - 0.5;
-  float rw = r + w.x * 0.7;
-  float pw = psi + w.y * 0.6;
-  float broad = fbm(vec2(rw * 1.3 + seed, pw * (8.0 / TAU)), 8.0, 4);
-  float fil = ridged(vec2(rw * 4.0 + seed + 7.0, pw * (12.0 / TAU)), 12.0, 5);
-  float fine = fbm(vec2(rw * 11.0 + seed + 3.0, pw * (40.0 / TAU)), 40.0, 3);
-  float p = clamp((broad - 0.38) / 0.36, 0.0, 1.0);
-  float f = clamp((fil - 0.2) / 0.55, 0.0, 1.0);
-  heat = f * f;
-  return 0.16 + 0.5 * p + 1.2 * f * f * (0.35 + 0.65 * p) + 0.25 * fine * f;
+  float rw = r + w.x * 0.5;
+  float pw = psi + w.y * 0.5;
+  float broad = fbm(vec2(rw * 1.1 + seed, pw * (7.0 / TAU)), 7.0, 4);
+  float fil = ridged(vec2(rw * 3.0 + seed + 7.0, pw * (10.0 / TAU)), 10.0, 3);
+  float fine = fbm(vec2(rw * 8.0 + seed + 3.0, pw * (30.0 / TAU)), 30.0, 3);
+  float p = smoothstep(0.25, 0.8, broad);
+  float f = smoothstep(0.15, 0.85, fil);
+  heat = f * p;
+  return 0.55 + 0.45 * p + 0.35 * f * (0.5 + 0.5 * p) + 0.15 * (fine - 0.5);
 }
 
 float omegaAt(float r) {
@@ -306,6 +307,33 @@ void main() {
   float m = 0.8 + (wA * (nA - 0.8) + wB * (nB - 0.8)) * k;
   float h = 0.3 + (wA * (hA - 0.3) + wB * (hB - 0.3)) * k;
   gl_FragColor = vec4(clamp(m, 0.0, 4.0) * 0.25, clamp(h, 0.0, 1.0), 0.0, 1.0);
+}
+  </script>
+
+  <!-- Softens the disk texture: motion blur along the orbit that follows the
+       local angular speed, plus a small radial soften. -->
+  <script id="fs-diskblur" type="x-shader/x-fragment">
+precision highp float;
+uniform sampler2D uTex;
+uniform vec2 uSize;
+uniform vec2 uDir;
+uniform float uSigma;
+const float R_IN = 2.4;
+const float R_OUT = 12.5;
+void main() {
+  vec2 uv = gl_FragCoord.xy / uSize;
+  float r = R_IN + uv.y * (R_OUT - R_IN);
+  float sigma = uDir.x > 0.5 ? max(uSigma * pow(R_IN / r, 1.5), 0.35) : uSigma;
+  vec2 stp = uDir / uSize * (sigma * 0.5);
+  vec4 acc = vec4(0.0);
+  float wsum = 0.0;
+  for (int k = -6; k <= 6; k++) {
+    float x = float(k) * 0.5;
+    float w = exp(-0.5 * x * x);
+    acc += texture2D(uTex, uv + stp * float(k)) * w;
+    wsum += w;
+  }
+  gl_FragColor = acc / wsum;
 }
   </script>
 
@@ -415,16 +443,16 @@ vec3 diskSample(vec3 hit, vec3 dir, float s, float turn, out float alpha) {
   float foot = s * 2.0 / (uFocal * uRes.y);
   float lodR = log2(max(foot / max(abs(dir.y), 0.2) * uDiskSize.y / (R_OUT - R_IN), 1e-4));
   float lodP = log2(max(foot * uDiskSize.x / (TAU * r), 1e-4));
-  float lod = max(max(lodR, lodP) - 0.5, 0.0) + clamp(turn / PI, 0.0, 1.0) * 2.0;
+  float lod = max(max(lodR, lodP) + 0.3, 0.0) + clamp(turn / PI, 0.0, 1.0) * 2.0;
   vec4 tx = DISK_LOD(uv, lod);
   float tex = tx.r * 4.0;
   float heat = tx.g;
 
-  float edgeIn = smoothstep(R_IN, R_IN + 0.10, r);
+  float edgeIn = smoothstep(R_IN, R_IN + 0.2, r);
   float edgeOut = 1.0 - smoothstep(R_OUT * 0.5, R_OUT, r);
   float prof = pow(R_IN / r, 1.5);
   float I = 2.1 * prof * edgeIn * edgeOut * tex;
-  I += 1.3 * exp(-(r - R_IN) * 3.0) * edgeIn * (0.7 + 0.3 * tex);   // hot inner rim
+  I += 1.2 * exp(-(r - R_IN) * 2.0) * edgeIn * (0.7 + 0.3 * tex);   // hot inner rim
 
   // Relativistic beaming of the orbiting gas (photon travels along -dir).
   float beta = sqrt(0.5 / r);
@@ -432,7 +460,7 @@ vec3 diskSample(vec3 hit, vec3 dir, float s, float turn, out float alpha) {
   float gam = 1.0 / sqrt(1.0 - beta * beta);
   float delta = 1.0 / (gam * (1.0 - dot(vel, -dir)));
   I *= pow(delta, 2.0 * uDoppler);
-  vec3 col = mix(palette(r), vec3(1.0, 0.97, 0.90), heat * 0.4);
+  vec3 col = mix(palette(r), vec3(1.0, 0.97, 0.90), heat * 0.25);
   float sh = mix(1.0, delta, uDoppler);
   col = mix(col, col * vec3(0.86, 0.95, 1.18), clamp((sh - 1.0) * 1.5, 0.0, 1.0));
   col = mix(col, col * vec3(1.12, 0.82, 0.62), clamp((1.0 - sh) * 1.5, 0.0, 1.0));
@@ -663,7 +691,7 @@ void main() {
   c.b = dec(texture2D(uScene, vUv - ab).rgb).b;
   vec3 b1 = dec(texture2D(uBloom1, vUv).rgb);
   vec3 b2 = dec(texture2D(uBloom2, vUv).rgb);
-  c += (b1 * 0.30 + b2 * 0.16) * uBloom;
+  c += (b1 * 0.38 + b2 * 0.14) * uBloom;
   c *= uExposure;
   float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
   vec3 tmL = c * (aces(vec3(lum)).x / max(lum, 1e-4));
@@ -755,10 +783,10 @@ void main() {
   }
 
   // Mipmapped 8-bit texture for the disk material (wraps around in azimuth).
-  function makeDiskTexture(w, h) {
+  function makeDiskTexture(w, h, mip) {
     var tex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, tex);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, mip ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
@@ -827,9 +855,10 @@ void main() {
     return { p: p, u: u };
   }
 
-  var disk, trace, resolve, bright, blur, composite;
+  var disk, diskBlur, trace, resolve, bright, blur, composite;
   try {
     disk = program('fs-disk');
+    diskBlur = program('fs-diskblur');
     trace = program('fs-trace', lodExt ? '#extension GL_EXT_shader_texture_lod : enable\n#define HAS_LOD 1\n' : '');
     resolve = program('fs-resolve');
     bright = program('fs-bright');
@@ -873,8 +902,13 @@ void main() {
   function ensureDiskTexture() {
     var w = (mobile || quality < 0.6) ? 1024 : 2048;
     if (diskTex && diskTex.w === w) return;
-    if (diskTex) freeTarget(diskTex);
-    diskTex = makeDiskTexture(w, w / 2);
+    if (diskTex) { freeTarget(diskTex.a); freeTarget(diskTex.b); freeTarget(diskTex.c); }
+    diskTex = {
+      w: w, h: w / 2,
+      a: makeDiskTexture(w, w / 2, false),   // raw material
+      b: makeDiskTexture(w, w / 2, false),   // after orbital blur
+      c: makeDiskTexture(w, w / 2, true)     // after radial soften, mipmapped, sampled by the tracer
+    };
   }
 
   function viewportSize() {
@@ -1026,15 +1060,28 @@ void main() {
     var centerX = aspect < 1 ? 0.5 : 0.56;       // fraction from the left
     var jit = jitters[frameIndex % jitters.length];
 
-    // 0. Disk material texture for this instant, with mipmaps.
+    // 0. Disk material texture for this instant: noise, orbital motion blur,
+    //    radial soften, mipmaps.
     gl.useProgram(disk.p);
-    bindTarget(diskTex);
+    bindTarget(diskTex.a);
     gl.uniform2f(disk.u.uSize, diskTex.w, diskTex.h);
     gl.uniform1f(disk.u.uTime, t);
     draw();
+    gl.useProgram(diskBlur.p);
+    gl.uniform2f(diskBlur.u.uSize, diskTex.w, diskTex.h);
+    bindTarget(diskTex.b);
+    gl.uniform2f(diskBlur.u.uDir, 1, 0);
+    gl.uniform1f(diskBlur.u.uSigma, diskTex.w * 0.0045);   // ~1.6 degrees of orbit at the inner edge
+    bindTex(diskBlur.u.uTex, diskTex.a.tex, 0);
+    draw();
+    bindTarget(diskTex.c);
+    gl.uniform2f(diskBlur.u.uDir, 0, 1);
+    gl.uniform1f(diskBlur.u.uSigma, diskTex.h * 0.0015);   // ~1.5 texels radially
+    bindTex(diskBlur.u.uTex, diskTex.b.tex, 0);
+    draw();
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, diskTex.tex);
+    gl.bindTexture(gl.TEXTURE_2D, diskTex.c.tex);
     gl.generateMipmap(gl.TEXTURE_2D);
 
     // 1. Geodesic trace into the HDR scene target.
@@ -1055,7 +1102,7 @@ void main() {
     gl.uniform1f(trace.u.uHaze, 0.2);
     gl.uniform1f(trace.u.uPxPerUnit, 1.77 * focal * sc.h);
     gl.uniform2f(trace.u.uDiskSize, diskTex.w, diskTex.h);
-    bindTex(trace.u.uDisk, diskTex.tex, 0);
+    bindTex(trace.u.uDisk, diskTex.c.tex, 0);
     draw();
 
     // 2. Temporal accumulation (anti-aliasing).
@@ -1073,7 +1120,7 @@ void main() {
     frameIndex++;
 
     // 3. Bloom: tight glow at 1/4 res, wide glow at 1/16 res.
-    downsample(next, targets.b1a, 1.1);
+    downsample(next, targets.b1a, 0.9);
     blurPass(targets.b1a, targets.b1b, 1.0);
     blurPass(targets.b1a, targets.b1b, 1.0);
     downsample(targets.b1a, targets.b2a, 0.0);
