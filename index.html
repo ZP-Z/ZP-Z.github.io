@@ -354,7 +354,7 @@ uniform float uEnc;
 uniform int uMaxSteps;
 uniform float uDoppler;
 uniform float uHaze;
-uniform float uPxPerUnit;
+uniform float uPxPerRad;
 uniform sampler2D uDisk;
 uniform vec2 uDiskSize;
 
@@ -476,35 +476,86 @@ vec2 octa(vec3 d) {
   return uv * 0.5 + 0.5;
 }
 
-// Point stars with a sharp core, a soft halo and spikes on the brightest.
-vec3 starLayer(vec2 unit, float cells, float density, float gain, float seed) {
+// Star colour classes: orange, warm white, white, blue-white.
+vec3 starTint(float c) {
+  if (c < 0.18) return vec3(1.00, 0.66, 0.38);
+  if (c < 0.48) return vec3(1.00, 0.90, 0.76);
+  if (c < 0.75) return vec3(0.96, 0.97, 1.00);
+  return vec3(0.70, 0.81, 1.00);
+}
+
+vec3 octaDecode(vec2 uv) {
+  uv = uv * 2.0 - 1.0;
+  vec3 d = vec3(uv.x, 1.0 - abs(uv.x) - abs(uv.y), uv.y);
+  float t = max(-d.y, 0.0);
+  d.x += d.x >= 0.0 ? -t : t;
+  d.z += d.z >= 0.0 ? -t : t;
+  return normalize(d);
+}
+
+// Offset from the ray direction to a star direction, in screen pixels and
+// measured as a true angle, so stars stay round wherever they sit on the sky.
+vec2 starOffset(vec3 d, vec3 sd) {
+  vec3 diff = sd - d;
+  vec3 ax = normalize(cross(d, vec3(0.0, 1.0, 0.0)) + vec3(1e-4, 0.0, 0.0));
+  vec3 ay = cross(ax, d);
+  return vec2(dot(diff, ax), dot(diff, ay)) * uPxPerRad;
+}
+
+// One layer of point stars: sharp core, a modest halo that grows with
+// brightness, faint spikes on the brightest; the wide glow of bright stars
+// comes from the screen-space bloom, like a camera. Brightness follows a
+// steep power law, so most stars are tiny and a few dominate. Density is
+// shaped per cell by a slow noise so stars gather in clusters and leave voids.
+vec3 starLayer(vec3 d, vec2 unit, float cells, float dens, float gain, float seed, float clumpAmp) {
   vec2 uv = unit * cells;
   vec2 ci = floor(uv);
-  vec2 f = uv - ci;
-  float pxc = uPxPerUnit / cells;          // pixels per cell
-  float sc = 0.8 / pxc;                    // core sigma (cells)
-  float sh = 3.6 / pxc;                    // halo sigma
-  float sl = 7.0 / pxc;                    // spike length
   vec3 col = vec3(0.0);
   for (int j = -1; j <= 1; j++) {
     for (int i = -1; i <= 1; i++) {
       vec2 o = vec2(float(i), float(j));
       vec2 c = ci + o + seed;
       vec3 h = hash23(c);
-      if (h.z < density) {
-        vec2 sp = o + h.xy - f;
+      float dn = dens;
+      if (clumpAmp > 0.0) {
+        float clump = vnoise(c / 6.0 + seed * 0.37);
+        dn *= mix(1.0, 0.15 + 1.8 * smoothstep(0.35, 0.75, clump), clumpAmp);
+      }
+      if (h.z < dn) {
+        vec2 sp = starOffset(d, octaDecode((ci + o + h.xy) / cells));
         float d2 = dot(sp, sp);
         float q = hash21(c + 19.7);
-        float br = gain * (0.05 + pow(q, 10.0) * 2.0);
-        float core = exp(-d2 / (2.0 * sc * sc));
-        float halo = 0.06 * exp(-d2 / (2.0 * sh * sh));
+        float br = gain * (0.03 + 3.0 * pow(q, 9.0));
+        float sh = 1.8 + 4.5 * sqrt(min(br, 3.0) / 3.0);
+        float core = exp(-d2 / 1.45);
+        float halo = (0.05 + 0.10 * min(br, 1.0)) * exp(-d2 / (2.0 * sh * sh));
         float spike = 0.0;
-        if (q > 0.985) {
-          spike = 0.16 * (exp(-abs(sp.x) / sl - sp.y * sp.y / (2.0 * sc * sc))
-                        + exp(-abs(sp.y) / sl - sp.x * sp.x / (2.0 * sc * sc)));
+        if (br > 2.2) {
+          float sl = sh * 2.0;
+          spike = 0.05 * (exp(-abs(sp.x) / sl - sp.y * sp.y / 1.5)
+                        + exp(-abs(sp.y) / sl - sp.x * sp.x / 1.5));
         }
-        vec3 tint = mix(vec3(0.70, 0.80, 1.00), vec3(1.00, 0.86, 0.66), hash21(c + 5.1));
-        col += tint * (br * (core + halo + spike));
+        col += starTint(hash21(c + 5.1)) * (br * (core + halo + spike));
+      }
+    }
+  }
+  return col;
+}
+
+// Cheap layer of unresolved, very faint stars (no clustering, no spikes).
+vec3 dustLayer(vec3 d, vec2 unit, float cells, float dens, float gain, float seed) {
+  vec2 uv = unit * cells;
+  vec2 ci = floor(uv);
+  vec3 col = vec3(0.0);
+  for (int j = -1; j <= 1; j++) {
+    for (int i = -1; i <= 1; i++) {
+      vec2 o = vec2(float(i), float(j));
+      vec2 c = ci + o + seed;
+      vec3 h = hash23(c);
+      if (h.z < dens) {
+        vec2 sp = starOffset(d, octaDecode((ci + o + h.xy) / cells));
+        float br = gain * (0.4 + 1.6 * h.x * h.y);
+        col += starTint(h.y) * (br * exp(-dot(sp, sp) / 1.6));
       }
     }
   }
@@ -513,17 +564,23 @@ vec3 starLayer(vec2 unit, float cells, float density, float gain, float seed) {
 
 vec3 starfield(vec3 d) {
   vec2 unit = octa(d);
-  vec3 col = starLayer(unit, 150.0, 0.14, 1.0, 0.0);
-  col += starLayer(unit, 420.0, 0.10, 0.12, 77.0);
 
-  // A faint, dusty band of unresolved stars behind everything.
-  vec3 nb = normalize(vec3(0.35, 1.0, -0.25));
-  float band = exp(-pow(dot(d, nb), 2.0) * 14.0);
+  // A dense, clumpy band of stars crosses the sky diagonally; the rest is sparse.
+  vec3 nb = normalize(vec3(0.8, 0.55, -0.35));
+  float band = exp(-pow(dot(d, nb), 2.0) * 12.0);
+
+  vec3 col = starLayer(d, unit, 120.0, 0.14, 1.0, 0.0, 0.6);
+  col += starLayer(d, unit, 160.0, 0.30, 0.9 * band, 31.0, 1.0);
+  col += starLayer(d, unit, 420.0, 0.35, 0.14 * band, 77.0, 0.7);
+  col += dustLayer(d, unit, 900.0, 0.4, 0.05 * (0.3 + band), 113.0);
+
+  // Diffuse light: unresolved stars and dust along the band, a faint blue veil.
   float n1 = fbm(unit * 9.0 + 3.0, 4);
   float n2 = fbm(unit * 23.0 + 11.0, 3);
-  vec3 dust = mix(vec3(0.05, 0.08, 0.16), vec3(0.17, 0.11, 0.07), n2);
+  vec3 dust = mix(vec3(0.06, 0.10, 0.20), vec3(0.20, 0.13, 0.08), n2);
   col += dust * band * (0.15 + 0.85 * n1 * n1) * 0.18;
-  col += vec3(0.004, 0.006, 0.012) * (0.5 + 0.5 * n1);
+  col += vec3(0.5, 0.65, 1.0) * band * 0.005;
+  col += vec3(0.004, 0.006, 0.013) * (0.5 + 0.5 * n1);
   return col;
 }
 
@@ -691,7 +748,7 @@ void main() {
   c.b = dec(texture2D(uScene, vUv - ab).rgb).b;
   vec3 b1 = dec(texture2D(uBloom1, vUv).rgb);
   vec3 b2 = dec(texture2D(uBloom2, vUv).rgb);
-  c += (b1 * 0.38 + b2 * 0.14) * uBloom;
+  c += (b1 * 0.40 + b2 * 0.16) * uBloom;
   c *= uExposure;
   float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
   vec3 tmL = c * (aces(vec3(lum)).x / max(lum, 1e-4));
@@ -714,6 +771,7 @@ void main() {
   var reduced = mq('(prefers-reduced-motion: reduce)');
   var coarse = mq('(pointer: coarse)');
   var mobile = coarse || window.innerWidth < 768;
+  var skyOnly = /[?&]sky=1/.test(search);
 
   function fail(msg) {
     root.classList.add('no-webgl');
@@ -1042,6 +1100,7 @@ void main() {
     var roll = 17.0 * deg;
     var cp = [D * Math.cos(incl) * Math.sin(az), D * Math.sin(incl), D * Math.cos(incl) * Math.cos(az)];
     var fwd = norm([-cp[0], -cp[1], -cp[2]]);
+    if (skyOnly) fwd = [-fwd[0], -fwd[1], -fwd[2]];   // debug: look away from the hole
     var right0 = norm(cross(fwd, [0, 1, 0]));
     var up0 = cross(right0, fwd);
     var cr = Math.cos(roll), sr = Math.sin(roll);
@@ -1100,7 +1159,7 @@ void main() {
     gl.uniform1i(trace.u.uMaxSteps, maxSteps);
     gl.uniform1f(trace.u.uDoppler, 0.32);
     gl.uniform1f(trace.u.uHaze, 0.2);
-    gl.uniform1f(trace.u.uPxPerUnit, 1.77 * focal * sc.h);
+    gl.uniform1f(trace.u.uPxPerRad, 0.5 * focal * sc.h);
     gl.uniform2f(trace.u.uDiskSize, diskTex.w, diskTex.h);
     bindTex(trace.u.uDisk, diskTex.c.tex, 0);
     draw();
@@ -1120,7 +1179,7 @@ void main() {
     frameIndex++;
 
     // 3. Bloom: tight glow at 1/4 res, wide glow at 1/16 res.
-    downsample(next, targets.b1a, 0.9);
+    downsample(next, targets.b1a, 0.6);
     blurPass(targets.b1a, targets.b1b, 1.0);
     blurPass(targets.b1a, targets.b1b, 1.0);
     downsample(targets.b1a, targets.b2a, 0.0);
