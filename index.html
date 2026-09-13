@@ -271,17 +271,19 @@ float material(float r, float psi, float seed, out float heat) {
   float rw = r + w.x * 0.35;
   float pw = psi + w.y * 0.4;
   float broad = fbm(vec2(rw * 1.2 + seed, pw * (6.0 / TAU)), 6.0, 3);
-  float wisp = fbm(vec2(rw * 2.8 + seed + 7.0, pw * (12.0 / TAU)), 12.0, 3);
+  float wisp = fbm(vec2(rw * 3.5 + seed + 7.0, pw * (10.0 / TAU)), 10.0, 3);
+  float wisp2 = fbm(vec2(rw * 6.0 + seed + 50.0, pw * (16.0 / TAU)), 16.0, 3);
   float fine = fbm(vec2(rw * 7.0 + seed + 3.0, pw * (18.0 / TAU)), 18.0, 3);
   float p = smoothstep(0.3, 0.75, broad);
-  float c = smoothstep(0.36, 0.64, wisp);
+  float c = smoothstep(0.42, 0.62, wisp);
+  float c2 = smoothstep(0.5, 0.68, wisp2);
   float f = smoothstep(0.35, 0.7, fine);
   // Dense and continuous near the hole, crossed by thin flow lines that the
-  // orbital blur draws out into long streaks; thinning into long, separate
-  // wisps further out, so the outer boundary breaks up into elongated clumps.
-  float dense = 1.0 - smoothstep(R_IN + 1.0, R_IN + 6.5, r);
+  // orbital blur draws out into long streaks. Beyond a few radii the gas is
+  // only separate elongated wisps at two scales, with dark gaps between them.
+  float dense = 1.0 - smoothstep(R_IN + 0.8, R_IN + 3.5, r);
   float smoothTex = 0.65 + 0.3 * p + 0.3 * (f - 0.5) + 0.1 * (c - 0.5);
-  float wispTex = 0.05 + 1.1 * c * (0.55 + 0.45 * p) + 0.2 * f * c;
+  float wispTex = 0.03 + (1.2 * c + 0.7 * c2) * (0.5 + 0.5 * p) + 0.15 * f * c;
   heat = p;
   return mix(wispTex, smoothTex, dense);
 }
@@ -453,9 +455,9 @@ vec3 diskSample(vec3 hit, vec3 dir, float s, float turn, out float alpha) {
   vec2 uv = diskUv(r, phi);
 
   float foot = s * 2.0 / (uFocal * uRes.y);
-  float lodR = log2(max(foot / max(abs(dir.y), 0.2) * uDiskSize.y / (R_OUT - R_IN), 1e-4));
+  float lodR = log2(max(foot / max(abs(dir.y), 0.4) * uDiskSize.y / (R_OUT - R_IN), 1e-4));
   float lodP = log2(max(foot * uDiskSize.x / (TAU * r), 1e-4));
-  float lod = max(max(lodR, lodP) + 0.3, 0.0) + clamp(turn / PI, 0.0, 1.0) * 2.0;
+  float lod = max(max(lodR, lodP), 0.0) + clamp(turn / PI, 0.0, 1.0) * 2.0;
   vec4 tx = DISK_LOD(uv, lod);
   float tex = tx.r * 4.0;
   float heat = tx.g;
@@ -541,13 +543,7 @@ vec3 starLayer(vec3 d, vec2 unit, float cells, float dens, float gain, float see
         float sh = 1.8 + 4.5 * sqrt(min(br, 3.0) / 3.0);
         float core = exp(-d2 / 1.45);
         float halo = (0.05 + 0.10 * min(br, 1.0)) * exp(-d2 / (2.0 * sh * sh));
-        float spike = 0.0;
-        if (br > 2.2) {
-          float sl = sh * 2.0;
-          spike = 0.05 * (exp(-abs(sp.x) / sl - sp.y * sp.y / 1.5)
-                        + exp(-abs(sp.y) / sl - sp.x * sp.x / 1.5));
-        }
-        col += starTint(hash21(c + 5.1)) * (br * (core + halo + spike));
+        col += starTint(hash21(c + 5.1)) * (br * (core + halo));
       }
     }
   }
@@ -753,6 +749,7 @@ uniform float uEnc;
 uniform float uExposure;
 uniform float uBloom;
 uniform float uAberration;
+uniform vec2 uTexel;
 vec3 dec(vec3 c) { return uEnc > 0.5 ? c * c * 12.0 : c; }
 vec3 aces(vec3 x) {
   return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
@@ -762,13 +759,21 @@ float hash(vec2 p) {
   p3 += dot(p3, p3.yzx + 33.33);
   return fract((p3.x + p3.y) * p3.z);
 }
+// Slight film-like soft focus: takes the edge off sub-pixel lines such as
+// the photon ring without blurring the image as a whole.
+vec3 soft(vec2 uv) {
+  vec2 o = uTexel * 0.75;
+  return dec(texture2D(uScene, uv).rgb) * 0.4
+       + (dec(texture2D(uScene, uv + o).rgb) + dec(texture2D(uScene, uv - o).rgb)
+        + dec(texture2D(uScene, uv + vec2(o.x, -o.y)).rgb) + dec(texture2D(uScene, uv + vec2(-o.x, o.y)).rgb)) * 0.15;
+}
 void main() {
   vec2 q = vUv - 0.5;
   vec2 ab = q * uAberration;
   vec3 c;
-  c.r = dec(texture2D(uScene, vUv + ab).rgb).r;
-  c.g = dec(texture2D(uScene, vUv).rgb).g;
-  c.b = dec(texture2D(uScene, vUv - ab).rgb).b;
+  c.r = soft(vUv + ab).r;
+  c.g = soft(vUv).g;
+  c.b = soft(vUv - ab).b;
   vec3 b1 = dec(texture2D(uBloom1, vUv).rgb);
   vec3 b2 = dec(texture2D(uBloom2, vUv).rgb);
   vec3 b3 = dec(texture2D(uBloom3, vUv).rgb);
@@ -1160,7 +1165,7 @@ void main() {
     // Camera motion shortens the temporal history so nothing ghosts.
     var motion = dist(fwd, prevFwd) + dist(up, prevUp);
     prevFwd = fwd; prevUp = up;
-    var alpha = histValid ? Math.min(0.9, 0.15 + motion * 320) : 1.0;
+    var alpha = histValid ? Math.min(0.9, 0.15 + motion * 900) : 1.0;
 
     var sc = targets.scene;
     var aspect = sc.w / sc.h;
@@ -1248,7 +1253,8 @@ void main() {
     gl.uniform1f(composite.u.uEnc, encMode);
     gl.uniform1f(composite.u.uExposure, 1.15);
     gl.uniform1f(composite.u.uBloom, 1.0);
-    gl.uniform1f(composite.u.uAberration, 0.0016);
+    gl.uniform1f(composite.u.uAberration, 0.0006);
+    gl.uniform2f(composite.u.uTexel, 1 / next.w, 1 / next.h);
     bindTex(composite.u.uScene, next.tex, 0);
     bindTex(composite.u.uBloom1, targets.b1a.tex, 1);
     bindTex(composite.u.uBloom2, targets.b2a.tex, 2);
