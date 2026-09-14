@@ -198,8 +198,6 @@ uniform vec2 uSize;
 uniform float uTime;
 
 const float TAU = 6.28318530717959;
-uniform sampler2D uFlow;
-uniform float uFlowReady;
 const float R_IN = 2.0;
 const float R_OUT = 12.5;
 
@@ -240,63 +238,41 @@ float fbm(vec2 p, float py, int oct) {
   return v / norm;
 }
 
-// Ridged multifractal: sharp, connected filaments.
-float ridged(vec2 p, float py, int oct) {
-  float v = 0.0;
-  float a = 0.5;
-  float norm = 0.0;
-  float prev = 1.0;
-  for (int k = 0; k < 6; k++) {
-    if (k >= oct) break;
-    float n = 1.0 - abs(2.0 * gnoise(p, py) - 1.0);
-    n *= n;
-    n *= mix(1.0, prev, 0.6);
-    prev = n;
-    v += a * n;
-    norm += a;
-    p = p * 2.0 + vec2(23.0, 0.0);
-    py *= 2.0;
-    a *= 0.55;
+// Long orbital light strands with irregular spacing, thickness and intensity.
+// Only a fraction of a strand's spacing is displaced: no folded smoke curls.
+// Analytic footprint broadening preserves the energy of sub-texel light lines.
+float strands(float r, float psi, float frequency, float seed) {
+  float q = log(r / R_IN) * frequency + seed * 1.7;
+  float footprint = frequency * (R_OUT - R_IN) / (r * uSize.y);
+  float line = 0.0;
+  for (int k = -1; k <= 1; k++) {
+    float id = floor(q) + float(k);
+    vec2 rnd = hash22(vec2(id + seed, seed + 17.0));
+    float phase = rnd.y * TAU;
+    float center = id + 0.18 + 0.64 * rnd.x
+                 + 0.22 * sin(2.0 * psi + phase) + 0.07 * sin(5.0 * psi - phase);
+    float width = 0.025 + 0.06 * rnd.y;
+    float sigma = sqrt(width * width + footprint * footprint * 0.09);
+    float d = (q - center) / sigma;
+    float core = exp(-0.5 * d * d) * width / sigma;
+    float period = 32.0 + floor(rnd.x * 24.0);
+    float light = gnoise(vec2(id * 1.37 + seed, psi * (period / TAU) + phase), period);
+    float along = 0.002 + 1.5 * pow(smoothstep(0.24, 0.76, light), 1.6);
+    line += core * along * (0.35 + 1.9 * rnd.x * rnd.x);
   }
-  return v / norm;
+  return line;
 }
 
-// Log-radius gives the inner arc the same hierarchy of features as the outer
-// disk. Two periodic domain warps braid the flow rather than drawing parallel
-// rings; connected ridges sit inside broad, broken sheets and dark channels.
+// Three interleaved strand scales create dense fine light without gas clumps.
 float material(float r, float psi, float seed, out float heat, out float body) {
   float lr = log(r / R_IN);
-  float eddy = fbm(vec2(lr * 7.0 + seed, psi * (8.0 / TAU) + lr * 1.8), 8.0, 3) - 0.5;
-  float curl = fbm(vec2(lr * 13.0 + seed + 41.0, psi * (16.0 / TAU) - lr * 3.0), 16.0, 2) - 0.5;
-  float wr = lr + eddy * 0.08 + curl * 0.025;
-  float wp = psi + lr * 0.35 + eddy * 0.18 - curl * 0.08;
-  if (uFlowReady > 0.5) {
-    // An AI-created emission swatch is advected in material space.
-    // Two scales and periodic shear break up repetition; ray tracing still
-    // determines every visible disk image, occlusion, and lensing distortion.
-    vec2 uv = vec2(wp * (8.0 / TAU) + wr * 0.20 + seed * 0.073,
-                   wr * 0.85 + seed * 0.047 + 0.15);
-    vec3 a = texture2D(uFlow, uv).rgb;
-    vec3 b = texture2D(uFlow, uv * vec2(3.0, 2.6) + vec2(0.37, 0.53)).rgb;
-    float density = dot(a * 0.78 + b * 0.22, vec3(0.2126, 0.7152, 0.0722));
-    body = clamp(0.24 + density * 0.94 + eddy * 0.65, 0.0, 1.0);
-    heat = clamp(0.14 + density * 0.98, 0.0, 1.0);
-    return 1.65 * pow(max(density, 0.0), 1.12) * (0.86 + 0.5 * eddy);
-  }
-  float cloud = fbm(vec2(wr * 11.0 + seed + 7.0, wp * (20.0 / TAU)), 20.0, 3);
-  float channel = fbm(vec2(wr * 24.0 + seed + 63.0, wp * (38.0 / TAU) + wr * 4.0), 38.0, 2);
-  float fibers = ridged(vec2(wr * 72.0 + seed, wp * (64.0 / TAU) + wr * 5.0), 64.0, 3);
-  float lace = ridged(vec2(wr * 155.0 + seed + 91.0, wp * (112.0 / TAU) - wr * 9.0), 112.0, 2);
-  float clumps = smoothstep(0.30, 0.73, cloud);
-  float lanes = smoothstep(0.29, 0.66, channel);
-  float filaments = 1.55 * fibers * fibers + 0.60 * lace * lace * lace;
-  float knots = smoothstep(0.58, 0.76, cloud) * fibers;
-  float sheet = (0.08 + 0.55 * clumps + filaments + 1.4 * knots)
-              * (0.025 + 0.975 * lanes * lanes);
-  float fringe = 0.35 + 0.65 * smoothstep(0.28, 0.65, cloud);
-  body = clamp(0.65 * lanes + 0.35 * clumps, 0.0, 1.0);
-  heat = clamp(0.35 * clumps + 0.45 * fibers + 0.65 * knots, 0.0, 1.0);
-  return sheet * mix(1.0, fringe, smoothstep(R_IN + 0.8, R_OUT, r));
+  float envelope = fbm(vec2(lr * 16.0 + seed, psi * (3.0 / TAU)), 3.0, 2);
+  float fine = 0.70 * strands(r, psi, 95.0, seed)
+             + 2.20 * strands(r, psi + 0.73, 230.0, seed + 23.0)
+             + 2.00 * strands(r, psi - 0.41, 470.0, seed + 61.0);
+  heat = clamp(0.30 + fine * 0.44, 0.0, 1.0);
+  body = 0.55 + 0.40 * envelope;
+  return (0.008 + fine) * (0.50 + 1.10 * envelope);
 }
 
 float omegaAt(float r) {
@@ -447,11 +423,11 @@ float fbm(vec2 p, int oct) {
 // filaments read hotter and dim gaps cooler.
 vec3 palette(float r, float shift) {
   float t = clamp((r - R_IN) / (R_OUT - R_IN) + shift, 0.0, 1.0);
-  vec3 c0 = vec3(1.00, 0.86, 0.66);   // hot ivory
-  vec3 c1 = vec3(1.00, 0.68, 0.36);   // champagne gold
-  vec3 c2 = vec3(0.95, 0.49, 0.20);   // amber filaments
-  vec3 c3 = vec3(0.55, 0.25, 0.095);  // copper dust
-  vec3 c4 = vec3(0.14, 0.075, 0.04);  // dark outer folds
+  vec3 c0 = vec3(1.00, 0.94, 0.89);   // pearly white light
+  vec3 c1 = vec3(1.00, 0.82, 0.65);   // pale champagne
+  vec3 c2 = vec3(0.92, 0.63, 0.36);   // fine amber light
+  vec3 c3 = vec3(0.50, 0.32, 0.19);   // faint bronze traces
+  vec3 c4 = vec3(0.13, 0.09, 0.06);   // fading outer strands
   vec3 c5 = vec3(0.018, 0.030, 0.05); // faint blue-black rim
   if (t < 0.16) return mix(c0, c1, smoothstep(0.0, 0.16, t));
   if (t < 0.36) return mix(c1, c2, smoothstep(0.16, 0.36, t));
@@ -972,44 +948,6 @@ void main() {
   }
   var encMode = hdr ? 0.0 : 1.0;
 
-  // A single same-origin material asset supplements the procedural fallback.
-  // The uploaded texture is power-of-two for WebGL 1 mipmapping/repeat support.
-  var flowReady = false;
-  var flowTexture = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, flowTexture);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.MIRRORED_REPEAT);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.MIRRORED_REPEAT);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
-    new Uint8Array([128, 128, 128, 255]));
-  gl.bindTexture(gl.TEXTURE_2D, null);
-  var flowImage = new Image();
-  flowImage.onload = function () {
-    if (gl.isContextLost()) return;
-    try {
-      var staging = document.createElement('canvas');
-      staging.width = 2048; staging.height = 1024;
-      var ctx = staging.getContext('2d');
-      ctx.drawImage(flowImage, 0, 0, staging.width, staging.height);
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, flowTexture);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, staging);
-      gl.generateMipmap(gl.TEXTURE_2D);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-      gl.bindTexture(gl.TEXTURE_2D, null);
-      flowReady = true;
-      histValid = false;
-      staticFramesLeft = STATIC_FRAMES;
-    } catch (e) {
-      console.warn('[gargantua] Flow material unavailable; using procedural gas: ' + e.message);
-    }
-  };
-  flowImage.onerror = function () {
-    console.warn('[gargantua] Flow material unavailable; using procedural gas');
-  };
-  flowImage.src = 'images/gargantua-flow-v1.png';
-
   // ---- Shaders ----
   function src(id) { return document.getElementById(id).textContent; }
 
@@ -1293,8 +1231,6 @@ void main() {
     bindTarget(diskTex.a);
     gl.uniform2f(disk.u.uSize, diskTex.w, diskTex.h);
     gl.uniform1f(disk.u.uTime, t);
-    gl.uniform1f(disk.u.uFlowReady, flowReady ? 1 : 0);
-    bindTex(disk.u.uFlow, flowTexture, 0);
     draw();
     gl.useProgram(diskBlur.p);
     gl.uniform2f(diskBlur.u.uSize, diskTex.w, diskTex.h);
@@ -1420,7 +1356,7 @@ void main() {
   requestAnimationFrame(frame);
 
   if (/[?&]debug=1/.test(search)) {
-    window.__bh = { gl: gl, targets: function () { return targets; }, disk: function () { return diskTex; }, render: render, hdr: hdr, isGL2: isGL2, quality: function () { return quality; }, materialReady: function () { return flowReady; } };
+    window.__bh = { gl: gl, targets: function () { return targets; }, disk: function () { return diskTex; }, render: render, hdr: hdr, isGL2: isGL2, quality: function () { return quality; } };
   }
 })();
   </script>
