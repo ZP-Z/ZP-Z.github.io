@@ -51,16 +51,16 @@
       display: none;
       overflow: hidden;
       background:
-        radial-gradient(ellipse at 82% 36%, rgba(148, 144, 172, 0.22), transparent 62%),
-        radial-gradient(ellipse at 40% 0%, #14212b, #05090d 72%);
+        radial-gradient(ellipse at 75% 42%, rgba(148, 118, 70, 0.06), transparent 54%),
+        radial-gradient(ellipse at 40% 0%, #081019, #020407 72%);
     }
 
     .fallback-disk {
       position: absolute;
-      left: 79%;
-      top: 40%;
-      width: max(140vw, 180vh);
-      height: max(140vw, 180vh);
+      left: 75%;
+      top: 42%;
+      width: max(118vw, 148vh);
+      height: max(118vw, 148vh);
       transform: translate(-50%, -50%) rotate(-22deg);
     }
 
@@ -74,16 +74,16 @@
       transform: translate(-50%, -50%);
       border-radius: 50%;
       background: radial-gradient(circle,
-        #080c14 0 38%,
-        #343642 40%,
-        #cac5d4 40.5%,
-        #777583 41%,
-        #d5ced7 44%,
-        #f4ece3 46%,
-        #c6bac4 49%,
-        rgba(181, 156, 135, 0.5) 54%,
-        rgba(124, 128, 154, 0.20) 63%,
-        rgba(124, 128, 154, 0) 72%);
+        #020303 0 38%,
+        #17130e 40%,
+        #dcc69c 40.5%,
+        #564125 41%,
+        #d5ab75 44%,
+        #fff4df 46%,
+        #b98c50 49%,
+        rgba(185, 129, 54, 0.16) 54%,
+        rgba(124, 108, 84, 0.035) 63%,
+        rgba(124, 108, 84, 0) 70%);
     }
 
     .fallback-disk::after {
@@ -265,7 +265,7 @@ float ridged(vec2 p, float py, int oct) {
 float material(float r, float psi, float seed, out float heat) {
   float warp = gnoise(vec2(r * 0.65 + seed, psi * (9.0 / TAU)), 9.0) - 0.5;
   float ripple = gnoise(vec2(r * 7.0 + seed, psi * (32.0 / TAU)), 32.0) - 0.5;
-  float rw = r + warp * 0.12 + ripple * 0.035;
+  float rw = r + warp * 0.32 + ripple * 0.045;
   float pw = psi + warp * 0.08;
   float broad = fbm(vec2(rw * 1.1 + seed, pw * (12.0 / TAU)), 12.0, 3);
   float folds = fbm(vec2(rw * 8.0 + seed + 7.0, pw * (48.0 / TAU)), 48.0, 3);
@@ -276,7 +276,8 @@ float material(float r, float psi, float seed, out float heat) {
   float fibers = smoothstep(0.40, 0.69, threads);
   float hair = smoothstep(0.47, 0.72, fine);
   float dense = 1.0 - smoothstep(R_IN + 0.4, R_IN + 3.0, r);
-  float sheet = 0.32 + 0.26 * p + 0.18 * ribbons + 0.52 * fibers + 0.22 * hair;
+  float sheet = (0.055 + 0.14 * p + 0.25 * ribbons + 0.82 * fibers + 0.28 * hair)
+              * (0.35 + 1.05 * p);
   float wisps = 0.018 + (0.28 * ribbons + 0.85 * fibers + 0.42 * hair)
                        * (0.20 + 0.80 * p) * (0.35 + 0.65 * ribbons);
   heat = clamp(0.6 * p + 0.4 * fibers, 0.0, 1.0);
@@ -431,12 +432,12 @@ float fbm(vec2 p, int oct) {
 // filaments read hotter and dim gaps cooler.
 vec3 palette(float r, float shift) {
   float t = clamp((r - R_IN) / (R_OUT - R_IN) + shift, 0.0, 1.0);
-  vec3 c0 = vec3(0.86, 0.84, 1.00);   // pearl / lavender
-  vec3 c1 = vec3(1.00, 0.94, 0.87);   // ivory
-  vec3 c2 = vec3(0.94, 0.76, 0.55);   // muted champagne
-  vec3 c3 = vec3(0.66, 0.47, 0.31);   // dusty gold
-  vec3 c4 = vec3(0.32, 0.29, 0.32);   // mauve ash
-  vec3 c5 = vec3(0.22, 0.29, 0.37);   // blue-grey feathered rim
+  vec3 c0 = vec3(1.00, 0.86, 0.66);   // hot ivory
+  vec3 c1 = vec3(1.00, 0.68, 0.36);   // champagne gold
+  vec3 c2 = vec3(0.95, 0.49, 0.20);   // amber filaments
+  vec3 c3 = vec3(0.55, 0.25, 0.095);  // copper dust
+  vec3 c4 = vec3(0.14, 0.075, 0.04);  // dark outer folds
+  vec3 c5 = vec3(0.018, 0.030, 0.05); // faint blue-black rim
   if (t < 0.16) return mix(c0, c1, smoothstep(0.0, 0.16, t));
   if (t < 0.36) return mix(c1, c2, smoothstep(0.16, 0.36, t));
   if (t < 0.58) return mix(c2, c3, smoothstep(0.36, 0.58, t));
@@ -460,10 +461,12 @@ vec3 diskSample(vec3 hit, vec3 dir, float s, float turn, out float alpha) {
   float lodP = log2(max(foot * uDiskSize.x / (TAU * r), 1e-4));
   // Higher-order images (rays that went more than half way round) squeeze the
   // whole disk into a hair-thin ring, so they get a very coarse sample.
-  float lod = max(max(lodR, lodP), 0.0) + clamp(turn / PI, 0.0, 1.0) * 2.0
+  float lod = max(max(lodR, lodP), 0.0) + clamp(turn / PI, 0.0, 1.0) * 0.85
             + smoothstep(2.6, 3.4, turn) * 5.0;
   vec4 tx = DISK_LOD(uv, lod);
-  float tex = tx.r * 4.0;
+  // Separate emissive filaments from the absorbing gaps without lifting the
+  // whole disk. Filter first, then shape contrast to keep sub-pixel lines stable.
+  float tex = 1.8 * pow(max(tx.r * 4.0, 0.0), mix(1.8, 1.35, smoothstep(2.0, 7.0, r)));
   float heat = tx.g;
 
   float edgeIn = smoothstep(R_IN, R_IN + 0.12, r);
@@ -472,7 +475,7 @@ vec3 diskSample(vec3 hit, vec3 dir, float s, float turn, out float alpha) {
   float I = 2.1 * prof * edgeIn * edgeOut * tex;
   // Let threads modulate the hot inner sheet as well; a constant white floor
   // otherwise hides them when the highlights roll off.
-  I += 0.85 * exp(-(r - R_IN) * 0.85) * edgeIn * (0.18 + 0.82 * tex);
+  I += 1.05 * exp(-(r - R_IN) * 0.85) * edgeIn * (0.025 + 0.975 * tex);
   I *= mix(1.0, 0.55, smoothstep(2.4, 3.1, turn));
 
   // Relativistic beaming of the orbiting gas (photon travels along -dir).
@@ -794,10 +797,10 @@ float hash(vec2 p) {
 // Slight film-like soft focus: takes the edge off sub-pixel lines such as
 // the photon ring without blurring the image as a whole.
 vec3 soft(vec2 uv) {
-  vec2 o = uTexel * 1.05;
-  return dec(texture2D(uScene, uv).rgb) * 0.4
+  vec2 o = uTexel * 0.65;
+  return dec(texture2D(uScene, uv).rgb) * 0.6
        + (dec(texture2D(uScene, uv + o).rgb) + dec(texture2D(uScene, uv - o).rgb)
-        + dec(texture2D(uScene, uv + vec2(o.x, -o.y)).rgb) + dec(texture2D(uScene, uv + vec2(-o.x, o.y)).rgb)) * 0.15;
+        + dec(texture2D(uScene, uv + vec2(o.x, -o.y)).rgb) + dec(texture2D(uScene, uv + vec2(-o.x, o.y)).rgb)) * 0.10;
 }
 void main() {
   vec2 q = vUv - 0.5;
@@ -809,24 +812,24 @@ void main() {
   vec3 b1 = dec(texture2D(uBloom1, vUv).rgb);
   vec3 b2 = dec(texture2D(uBloom2, vUv).rgb);
   vec3 b3 = dec(texture2D(uBloom3, vUv).rgb);
-  // Optical scattering: a small ivory glow, soft middle halo and a very wide
-  // lavender veil. They are added in linear light, before the highlight roll-off.
-  c += (b1 * vec3(0.54, 0.51, 0.52) + b2 * vec3(0.36, 0.34, 0.39)
-      + b3 * vec3(0.38, 0.37, 0.48)) * uBloom;
+  // Local optical glow follows the hot gas. Broad scattering is deliberately
+  // weak so it cannot paint a grey veil over the black-hole shadow.
+  c += (b1 * vec3(0.34, 0.27, 0.19) + b2 * vec3(0.075, 0.052, 0.032)
+      + b3 * vec3(0.008, 0.006, 0.004)) * uBloom;
   c *= uExposure;
   // Film-like highlight roll-off: intense light loses its colour gradually
   // rather than clipping channel by channel.
   float lumH = dot(c, vec3(0.2126, 0.7152, 0.0722));
-  c = mix(c, vec3(lumH) * vec3(1.00, 0.97, 1.02), smoothstep(0.9, 5.0, lumH) * 0.78);
+  c = mix(c, vec3(lumH) * vec3(1.00, 0.98, 0.94), smoothstep(1.6, 6.0, lumH) * 0.42);
   float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
   vec3 tmL = c * (aces(vec3(lum)).x / max(lum, 1e-4));
   c = clamp(mix(aces(c), tmL, 0.55), 0.0, 1.0);
-  // Grade: cool highlights, a navy lift in the darks.
+  // Preserve a deep black point; the scene already contains the blue starlight.
   float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
-  c = mix(c, c * vec3(0.97, 0.96, 1.02), smoothstep(0.45, 1.0, l));
-  c += vec3(0.0028, 0.0044, 0.0065) * pow(1.0 - l, 3.0);
+  c = mix(c, c * vec3(1.00, 0.985, 0.965), smoothstep(0.45, 1.0, l));
+  c += vec3(0.00010, 0.00016, 0.00024) * pow(1.0 - l, 3.0);
   c *= 1.0 - 0.26 * smoothstep(0.12, 0.72, dot(q, q));
-  c = pow(max(c, 0.0), vec3(1.0 / 2.2)) * 0.94;
+  c = pow(max(c, 0.0), vec3(1.0 / 2.2)) * 0.985;
   c += (hash(gl_FragCoord.xy + fract(uTime) * 61.0) - 0.5) * (1.25 / 255.0);
   gl_FragColor = vec4(c, 1.0);
 }
@@ -1214,9 +1217,9 @@ void main() {
 
     var sc = targets.scene;
     var aspect = sc.w / sc.h;
-    var focal = aspect < 1 ? 1.85 : Math.max(aspect * 1.72, 2.8);
-    var centerFrac = 0.37;                    // hole centre, fraction from the top
-    var centerX = aspect < 1 ? 0.58 : 0.83;    // space on the left for the gold sweep
+    var focal = aspect < 1 ? 1.85 : Math.max(aspect * 1.30, 2.30);
+    var centerFrac = aspect < 1 ? 0.37 : 0.42; // hole centre, fraction from the top
+    var centerX = aspect < 1 ? 0.58 : 0.75;    // reveal the full arc and foreground flow
     if (zoomDbg) { focal *= 3.5; centerFrac = 0.5; centerX = 0.5; }   // debug: magnify the shadow edge
     var jit = jitters[frameIndex % jitters.length];
 
@@ -1259,7 +1262,7 @@ void main() {
     gl.uniform1f(trace.u.uEnc, encMode);
     gl.uniform1i(trace.u.uMaxSteps, maxSteps);
     gl.uniform1f(trace.u.uDoppler, 0.18);
-    gl.uniform1f(trace.u.uHaze, 0.32);
+    gl.uniform1f(trace.u.uHaze, 0.08);
     gl.uniform1f(trace.u.uPxPerRad, 0.5 * focal * sc.h);
     gl.uniform2f(trace.u.uDiskSize, diskTex.w, diskTex.h);
     var planetPos = planetAt(t);
@@ -1283,13 +1286,13 @@ void main() {
     frameIndex++;
 
     // 3. Bloom: close glow at 1/4, middle halo at 1/16, wide veil at 1/64.
-    downsample(next, targets.b1a, 0.5);
-    blurPass(targets.b1a, targets.b1b, 1.5);
-    blurPass(targets.b1a, targets.b1b, 1.5);
-    downsample(targets.b1a, targets.b2a, 0.0);
+    downsample(next, targets.b1a, 0.8);
+    blurPass(targets.b1a, targets.b1b, 1.0);
+    blurPass(targets.b1a, targets.b1b, 1.0);
+    downsample(targets.b1a, targets.b2a, 0.16);
     blurPass(targets.b2a, targets.b2b, 1.5);
     blurPass(targets.b2a, targets.b2b, 1.5);
-    downsample(targets.b2a, targets.b3a, 0.0);
+    downsample(targets.b2a, targets.b3a, 0.30);
     blurPass(targets.b3a, targets.b3b, 2.0);
     blurPass(targets.b3a, targets.b3b, 2.0);
 
