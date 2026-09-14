@@ -198,6 +198,8 @@ uniform vec2 uSize;
 uniform float uTime;
 
 const float TAU = 6.28318530717959;
+uniform sampler2D uFlow;
+uniform float uFlowReady;
 const float R_IN = 2.0;
 const float R_OUT = 12.5;
 
@@ -259,29 +261,42 @@ float ridged(vec2 p, float py, int oct) {
   return v / norm;
 }
 
-// Gas in (radius, advected azimuth). Anisotropic noise stretches along the
-// orbit: broad folds carry many fine, irregular threads with dark gaps.
-// Radial warp stays small so the sheet reads as flowing silk, not clouds.
-float material(float r, float psi, float seed, out float heat) {
-  float warp = gnoise(vec2(r * 0.65 + seed, psi * (9.0 / TAU)), 9.0) - 0.5;
-  float ripple = gnoise(vec2(r * 7.0 + seed, psi * (32.0 / TAU)), 32.0) - 0.5;
-  float rw = r + warp * 0.32 + ripple * 0.045;
-  float pw = psi + warp * 0.08;
-  float broad = fbm(vec2(rw * 1.1 + seed, pw * (12.0 / TAU)), 12.0, 3);
-  float folds = fbm(vec2(rw * 8.0 + seed + 7.0, pw * (48.0 / TAU)), 48.0, 3);
-  float threads = fbm(vec2(rw * 38.0 + seed + 41.0, pw * (100.0 / TAU)), 100.0, 3);
-  float fine = gnoise(vec2(rw * 92.0 + seed + 91.0, pw * (160.0 / TAU)), 160.0);
-  float p = smoothstep(0.28, 0.74, broad);
-  float ribbons = smoothstep(0.35, 0.68, folds);
-  float fibers = smoothstep(0.40, 0.69, threads);
-  float hair = smoothstep(0.47, 0.72, fine);
-  float dense = 1.0 - smoothstep(R_IN + 0.4, R_IN + 3.0, r);
-  float sheet = (0.055 + 0.14 * p + 0.25 * ribbons + 0.82 * fibers + 0.28 * hair)
-              * (0.35 + 1.05 * p);
-  float wisps = 0.018 + (0.28 * ribbons + 0.85 * fibers + 0.42 * hair)
-                       * (0.20 + 0.80 * p) * (0.35 + 0.65 * ribbons);
-  heat = clamp(0.6 * p + 0.4 * fibers, 0.0, 1.0);
-  return mix(wisps, sheet, dense);
+// Log-radius gives the inner arc the same hierarchy of features as the outer
+// disk. Two periodic domain warps braid the flow rather than drawing parallel
+// rings; connected ridges sit inside broad, broken sheets and dark channels.
+float material(float r, float psi, float seed, out float heat, out float body) {
+  float lr = log(r / R_IN);
+  float eddy = fbm(vec2(lr * 7.0 + seed, psi * (8.0 / TAU) + lr * 1.8), 8.0, 3) - 0.5;
+  float curl = fbm(vec2(lr * 13.0 + seed + 41.0, psi * (16.0 / TAU) - lr * 3.0), 16.0, 2) - 0.5;
+  float wr = lr + eddy * 0.08 + curl * 0.025;
+  float wp = psi + lr * 0.35 + eddy * 0.18 - curl * 0.08;
+  if (uFlowReady > 0.5) {
+    // An AI-created emission swatch is advected in material space.
+    // Two scales and periodic shear break up repetition; ray tracing still
+    // determines every visible disk image, occlusion, and lensing distortion.
+    vec2 uv = vec2(wp * (8.0 / TAU) + wr * 0.20 + seed * 0.073,
+                   wr * 0.85 + seed * 0.047 + 0.15);
+    vec3 a = texture2D(uFlow, uv).rgb;
+    vec3 b = texture2D(uFlow, uv * vec2(3.0, 2.6) + vec2(0.37, 0.53)).rgb;
+    float density = dot(a * 0.78 + b * 0.22, vec3(0.2126, 0.7152, 0.0722));
+    body = clamp(0.24 + density * 0.94 + eddy * 0.65, 0.0, 1.0);
+    heat = clamp(0.14 + density * 0.98, 0.0, 1.0);
+    return 1.65 * pow(max(density, 0.0), 1.12) * (0.86 + 0.5 * eddy);
+  }
+  float cloud = fbm(vec2(wr * 11.0 + seed + 7.0, wp * (20.0 / TAU)), 20.0, 3);
+  float channel = fbm(vec2(wr * 24.0 + seed + 63.0, wp * (38.0 / TAU) + wr * 4.0), 38.0, 2);
+  float fibers = ridged(vec2(wr * 72.0 + seed, wp * (64.0 / TAU) + wr * 5.0), 64.0, 3);
+  float lace = ridged(vec2(wr * 155.0 + seed + 91.0, wp * (112.0 / TAU) - wr * 9.0), 112.0, 2);
+  float clumps = smoothstep(0.30, 0.73, cloud);
+  float lanes = smoothstep(0.29, 0.66, channel);
+  float filaments = 1.55 * fibers * fibers + 0.60 * lace * lace * lace;
+  float knots = smoothstep(0.58, 0.76, cloud) * fibers;
+  float sheet = (0.08 + 0.55 * clumps + filaments + 1.4 * knots)
+              * (0.025 + 0.975 * lanes * lanes);
+  float fringe = 0.35 + 0.65 * smoothstep(0.28, 0.65, cloud);
+  body = clamp(0.65 * lanes + 0.35 * clumps, 0.0, 1.0);
+  heat = clamp(0.35 * clumps + 0.45 * fibers + 0.65 * knots, 0.0, 1.0);
+  return sheet * mix(1.0, fringe, smoothstep(R_IN + 0.8, R_OUT, r));
 }
 
 float omegaAt(float r) {
@@ -302,16 +317,16 @@ void main() {
   float tB = fract(tA + 0.5);
   float sA = (tA - 0.5) * P;
   float sB = (tB - 0.5) * P;
-  float wA = 1.0 - abs(tA - 0.5) * 2.0;
+  float wA = 0.5 - 0.5 * cos(tA * TAU);
   float wB = 1.0 - wA;
   float base = phi - omega0 * uTime;
-  float hA, hB;
-  float nA = material(r, base - (omega - omega0) * sA, 0.0, hA);
-  float nB = material(r, base - (omega - omega0) * sB + 2.1, 37.0, hB);
+  float hA, hB, dA, dB;
+  float nA = material(r, base - (omega - omega0) * sA, 0.0, hA, dA);
+  float nB = material(r, base - (omega - omega0) * sB + 2.1, 37.0, hB, dB);
   // Linear blending keeps the radial brightness profile stable over the cycle.
   float m = wA * nA + wB * nB;
   float h = wA * hA + wB * hB;
-  gl_FragColor = vec4(clamp(m, 0.0, 4.0) * 0.25, clamp(h, 0.0, 1.0), 0.0, 1.0);
+  gl_FragColor = vec4(clamp(m, 0.0, 4.0) * 0.25, clamp(h, 0.0, 1.0), wA * dA + wB * dB, 1.0);
 }
   </script>
 
@@ -461,9 +476,16 @@ vec3 diskSample(vec3 hit, vec3 dir, float s, float turn, out float alpha) {
   float lodP = log2(max(foot * uDiskSize.x / (TAU * r), 1e-4));
   // Higher-order images (rays that went more than half way round) squeeze the
   // whole disk into a hair-thin ring, so they get a very coarse sample.
-  float lod = max(max(lodR, lodP), 0.0) + clamp(turn / PI, 0.0, 1.0) * 0.85
+  // Four taps cover the long footprint axis without blurring the short axis
+  // equally. Isotropic mip selection erased the lensed sheet's fine eddies.
+  float major = max(lodR, lodP);
+  float minor = min(lodR, lodP);
+  float lod = max(max(minor, major - 2.0), 0.0)
             + smoothstep(2.6, 3.4, turn) * 5.0;
-  vec4 tx = DISK_LOD(uv, lod);
+  vec2 axis = lodR > lodP ? vec2(0.0, exp2(lodR) / uDiskSize.y)
+                         : vec2(exp2(lodP) / uDiskSize.x, 0.0);
+  vec4 tx = (DISK_LOD(uv - axis * 0.375, lod) + DISK_LOD(uv - axis * 0.125, lod)
+           + DISK_LOD(uv + axis * 0.125, lod) + DISK_LOD(uv + axis * 0.375, lod)) * 0.25;
   // Separate emissive filaments from the absorbing gaps without lifting the
   // whole disk. Filter first, then shape contrast to keep sub-pixel lines stable.
   float tex = 1.8 * pow(max(tx.r * 4.0, 0.0), mix(1.8, 1.35, smoothstep(2.0, 7.0, r)));
@@ -476,6 +498,7 @@ vec3 diskSample(vec3 hit, vec3 dir, float s, float turn, out float alpha) {
   // Let threads modulate the hot inner sheet as well; a constant white floor
   // otherwise hides them when the highlights roll off.
   I += 1.05 * exp(-(r - R_IN) * 0.85) * edgeIn * (0.025 + 0.975 * tex);
+  I *= mix(1.0, mix(0.48, 1.15, smoothstep(0.25, 0.70, tx.b)), smoothstep(2.6, 5.0, r));
   I *= mix(1.0, 0.55, smoothstep(2.4, 3.1, turn));
 
   // Relativistic beaming of the orbiting gas (photon travels along -dir).
@@ -484,8 +507,11 @@ vec3 diskSample(vec3 hit, vec3 dir, float s, float turn, out float alpha) {
   float gam = 1.0 / sqrt(1.0 - beta * beta);
   float delta = 1.0 / (gam * (1.0 - dot(vel, -dir)));
   I *= pow(delta, 2.0 * uDoppler);
-  vec3 col = palette(r, 0.045 - 0.10 * clamp(tex / 1.4, 0.0, 1.0));
-  col = mix(col, vec3(1.0, 0.97, 0.90), heat * 0.12);
+  vec3 col = palette(r, 0.10 - 0.20 * heat);
+  // Cooler, sparse material between the hot filaments adds depth locally;
+  // there is no global dust/grey overlay across the shadow or background.
+  col = mix(vec3(0.13, 0.16, 0.20), col, smoothstep(0.24, 0.64, tx.b));
+  col = mix(col, vec3(1.0, 0.94, 0.83), smoothstep(0.64, 0.90, heat) * 0.32);
   float sh = mix(1.0, delta, uDoppler);
   col = mix(col, col * vec3(0.86, 0.95, 1.18), clamp((sh - 1.0) * 1.5, 0.0, 1.0));
   col = mix(col, col * vec3(1.12, 0.82, 0.62), clamp((1.0 - sh) * 1.5, 0.0, 1.0));
@@ -946,6 +972,44 @@ void main() {
   }
   var encMode = hdr ? 0.0 : 1.0;
 
+  // A single same-origin material asset supplements the procedural fallback.
+  // The uploaded texture is power-of-two for WebGL 1 mipmapping/repeat support.
+  var flowReady = false;
+  var flowTexture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, flowTexture);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.MIRRORED_REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.MIRRORED_REPEAT);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+    new Uint8Array([128, 128, 128, 255]));
+  gl.bindTexture(gl.TEXTURE_2D, null);
+  var flowImage = new Image();
+  flowImage.onload = function () {
+    if (gl.isContextLost()) return;
+    try {
+      var staging = document.createElement('canvas');
+      staging.width = 2048; staging.height = 1024;
+      var ctx = staging.getContext('2d');
+      ctx.drawImage(flowImage, 0, 0, staging.width, staging.height);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, flowTexture);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, staging);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+      flowReady = true;
+      histValid = false;
+      staticFramesLeft = STATIC_FRAMES;
+    } catch (e) {
+      console.warn('[gargantua] Flow material unavailable; using procedural gas: ' + e.message);
+    }
+  };
+  flowImage.onerror = function () {
+    console.warn('[gargantua] Flow material unavailable; using procedural gas');
+  };
+  flowImage.src = 'images/gargantua-flow-v1.png';
+
   // ---- Shaders ----
   function src(id) { return document.getElementById(id).textContent; }
 
@@ -1040,10 +1104,10 @@ void main() {
     if (diskTex && diskTex.w === w) return;
     if (diskTex) { freeTarget(diskTex.a); freeTarget(diskTex.b); freeTarget(diskTex.c); }
     diskTex = {
-      w: w, h: w / 2,
-      a: makeDiskTexture(w, w / 2, false),   // raw material
-      b: makeDiskTexture(w, w / 2, false),   // after orbital blur
-      c: makeDiskTexture(w, w / 2, true)     // after radial soften, mipmapped, sampled by the tracer
+      w: w, h: w,
+      a: makeDiskTexture(w, w, false),       // raw material, enough radial detail for the inner arc
+      b: makeDiskTexture(w, w, false),       // after orbital blur
+      c: makeDiskTexture(w, w, true)         // after radial soften, mipmapped, sampled by the tracer
     };
   }
 
@@ -1229,17 +1293,19 @@ void main() {
     bindTarget(diskTex.a);
     gl.uniform2f(disk.u.uSize, diskTex.w, diskTex.h);
     gl.uniform1f(disk.u.uTime, t);
+    gl.uniform1f(disk.u.uFlowReady, flowReady ? 1 : 0);
+    bindTex(disk.u.uFlow, flowTexture, 0);
     draw();
     gl.useProgram(diskBlur.p);
     gl.uniform2f(diskBlur.u.uSize, diskTex.w, diskTex.h);
     bindTarget(diskTex.b);
     gl.uniform2f(diskBlur.u.uDir, 1, 0);
-    gl.uniform1f(diskBlur.u.uSigma, diskTex.w * 0.003);    // retain the breaks between fine orbital threads
+    gl.uniform1f(diskBlur.u.uSigma, diskTex.w * 0.0008);   // short orbital exposure, preserving knots and braids
     bindTex(diskBlur.u.uTex, diskTex.a.tex, 0);
     draw();
     bindTarget(diskTex.c);
     gl.uniform2f(diskBlur.u.uDir, 0, 1);
-    gl.uniform1f(diskBlur.u.uSigma, 0.55);                // preserve radial separation between threads
+    gl.uniform1f(diskBlur.u.uSigma, 0.30);                // only sub-texel radial soften
     bindTex(diskBlur.u.uTex, diskTex.b.tex, 0);
     draw();
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -1354,7 +1420,7 @@ void main() {
   requestAnimationFrame(frame);
 
   if (/[?&]debug=1/.test(search)) {
-    window.__bh = { gl: gl, targets: function () { return targets; }, disk: function () { return diskTex; }, render: render, hdr: hdr, isGL2: isGL2, quality: function () { return quality; } };
+    window.__bh = { gl: gl, targets: function () { return targets; }, disk: function () { return diskTex; }, render: render, hdr: hdr, isGL2: isGL2, quality: function () { return quality; }, materialReady: function () { return flowReady; } };
   }
 })();
   </script>
