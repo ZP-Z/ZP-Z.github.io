@@ -74,16 +74,14 @@
       transform: translate(-50%, -50%);
       border-radius: 50%;
       background: radial-gradient(circle,
-        #020303 0 38%,
-        #17130e 40%,
-        #dcc69c 40.5%,
-        #564125 41%,
-        #d5ab75 44%,
-        #fff4df 46%,
-        #b98c50 49%,
-        rgba(185, 129, 54, 0.16) 54%,
-        rgba(124, 108, 84, 0.035) 63%,
-        rgba(124, 108, 84, 0) 70%);
+        #171922 0 37%,
+        #4e4e62 39%,
+        #d9d6e5 41%,
+        #eee8e7 44%,
+        #f4eeea 49%,
+        #c6bbc2 52%,
+        rgba(194, 188, 209, 0.20) 61%,
+        rgba(194, 188, 209, 0) 70%);
     }
 
     .fallback-disk::after {
@@ -251,14 +249,17 @@ float strands(float r, float psi, float frequency, float seed) {
     float phase = rnd.y * TAU;
     float center = id + 0.18 + 0.64 * rnd.x
                  + 0.22 * sin(2.0 * psi + phase) + 0.07 * sin(5.0 * psi - phase);
-    float width = 0.025 + 0.06 * rnd.y;
+    // Dense inner light overlaps; outer strands stay thin and intermittent.
+    float crowd = 1.0 - smoothstep(3.0, 6.0, r);
+    float width = (0.025 + 0.06 * rnd.y) * mix(0.85, 2.5, crowd);
     float sigma = sqrt(width * width + footprint * footprint * 0.09);
     float d = (q - center) / sigma;
     float core = exp(-0.5 * d * d) * width / sigma;
     float period = 32.0 + floor(rnd.x * 24.0);
     float light = gnoise(vec2(id * 1.37 + seed, psi * (period / TAU) + phase), period);
     float along = 0.002 + 1.5 * pow(smoothstep(0.24, 0.76, light), 1.6);
-    line += core * along * (0.35 + 1.9 * rnd.x * rnd.x);
+    float selection = mix(smoothstep(0.30, 0.65, rnd.y), 1.0, crowd);
+    line += core * along * (0.35 + 1.9 * rnd.x * rnd.x) * selection;
   }
   return line;
 }
@@ -266,13 +267,15 @@ float strands(float r, float psi, float frequency, float seed) {
 // Three interleaved strand scales create dense fine light without gas clumps.
 float material(float r, float psi, float seed, out float heat, out float body) {
   float lr = log(r / R_IN);
-  float envelope = fbm(vec2(lr * 16.0 + seed, psi * (3.0 / TAU)), 3.0, 2);
+  float envelope = fbm(vec2(lr * 12.0 + seed, psi * (4.0 / TAU)), 4.0, 2);
+  float crowd = 1.0 - smoothstep(3.0, 6.0, r);
+  float bundles = smoothstep(0.28, 0.68, envelope);
   float fine = 0.70 * strands(r, psi, 95.0, seed)
              + 2.20 * strands(r, psi + 0.73, 230.0, seed + 23.0)
              + 2.00 * strands(r, psi - 0.41, 470.0, seed + 61.0);
   heat = clamp(0.30 + fine * 0.44, 0.0, 1.0);
-  body = 0.55 + 0.40 * envelope;
-  return (0.008 + fine) * (0.50 + 1.10 * envelope);
+  body = mix(0.30 + 0.65 * bundles, 0.92, crowd);
+  return (0.004 + fine) * mix(0.04 + 1.25 * bundles * bundles, 1.0, crowd);
 }
 
 float omegaAt(float r) {
@@ -466,14 +469,17 @@ vec3 diskSample(vec3 hit, vec3 dir, float s, float turn, out float alpha) {
   // whole disk. Filter first, then shape contrast to keep sub-pixel lines stable.
   float tex = 1.8 * pow(max(tx.r * 4.0, 0.0), mix(1.8, 1.35, smoothstep(2.0, 7.0, r)));
   float heat = tx.g;
+  // The brightest closely packed strands form an unresolved light sheet.
+  // Its radiance comes from the same material, filtered across adjacent lines.
+  float gathered = DISK_LOD(uv, lod + 2.0).r * 4.0;
+  float hot = exp(-pow((r - 2.65) / 1.30, 2.0));
 
   float edgeIn = smoothstep(R_IN, R_IN + 0.12, r);
   float edgeOut = 1.0 - smoothstep(R_OUT * 0.60, R_OUT, r);
   float prof = pow(R_IN / r, 1.85);
   float I = 2.1 * prof * edgeIn * edgeOut * tex;
-  // Let threads modulate the hot inner sheet as well; a constant white floor
-  // otherwise hides them when the highlights roll off.
-  I += 1.05 * exp(-(r - R_IN) * 0.85) * edgeIn * (0.025 + 0.975 * tex);
+  // Retain fine traces on the shoulder while the core merges into white light.
+  I += edgeIn * edgeOut * hot * (0.70 + 1.8 * gathered);
   I *= mix(1.0, mix(0.48, 1.15, smoothstep(0.25, 0.70, tx.b)), smoothstep(2.6, 5.0, r));
   I *= mix(1.0, 0.55, smoothstep(2.4, 3.1, turn));
 
@@ -488,6 +494,7 @@ vec3 diskSample(vec3 hit, vec3 dir, float s, float turn, out float alpha) {
   // there is no global dust/grey overlay across the shadow or background.
   col = mix(vec3(0.13, 0.16, 0.20), col, smoothstep(0.24, 0.64, tx.b));
   col = mix(col, vec3(1.0, 0.94, 0.83), smoothstep(0.64, 0.90, heat) * 0.32);
+  col = mix(col, vec3(1.0, 0.98, 1.015), hot * 0.68);
   float sh = mix(1.0, delta, uDoppler);
   col = mix(col, col * vec3(0.86, 0.95, 1.18), clamp((sh - 1.0) * 1.5, 0.0, 1.0));
   col = mix(col, col * vec3(1.12, 0.82, 0.62), clamp((1.0 - sh) * 1.5, 0.0, 1.0));
@@ -814,10 +821,10 @@ void main() {
   vec3 b1 = dec(texture2D(uBloom1, vUv).rgb);
   vec3 b2 = dec(texture2D(uBloom2, vUv).rgb);
   vec3 b3 = dec(texture2D(uBloom3, vUv).rgb);
-  // Local optical glow follows the hot gas. Broad scattering is deliberately
-  // weak so it cannot paint a grey veil over the black-hole shadow.
-  c += (b1 * vec3(0.34, 0.27, 0.19) + b2 * vec3(0.075, 0.052, 0.032)
-      + b3 * vec3(0.008, 0.006, 0.004)) * uBloom;
+  // A bright sheet has a close white glow, a pearl halo and a faint wide falloff.
+  // Every scale is sourced from thresholded radiance, with no global fog layer.
+  c += (b1 * vec3(0.65, 0.62, 0.65) + b2 * vec3(0.30, 0.32, 0.38)
+      + b3 * vec3(0.027, 0.031, 0.043)) * uBloom;
   c *= uExposure;
   // Film-like highlight roll-off: intense light loses its colour gradually
   // rather than clipping channel by channel.
@@ -826,8 +833,10 @@ void main() {
   float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
   vec3 tmL = c * (aces(vec3(lum)).x / max(lum, 1e-4));
   c = clamp(mix(aces(c), tmL, 0.55), 0.0, 1.0);
-  // Preserve a deep black point; the scene already contains the blue starlight.
+  // A soft display shoulder gives the merged sheet a pearl white finish.
   float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  c *= 1.0 - 0.16 * smoothstep(0.35, 1.0, l);
+  // Preserve the unlit background; only emitted light creates the halo.
   c = mix(c, c * vec3(1.00, 0.985, 0.965), smoothstep(0.45, 1.0, l));
   c += vec3(0.00010, 0.00016, 0.00024) * pow(1.0 - l, 3.0);
   c *= 1.0 - 0.26 * smoothstep(0.12, 0.72, dot(q, q));
@@ -1288,7 +1297,7 @@ void main() {
     frameIndex++;
 
     // 3. Bloom: close glow at 1/4, middle halo at 1/16, wide veil at 1/64.
-    downsample(next, targets.b1a, 0.8);
+    downsample(next, targets.b1a, 0.45);
     blurPass(targets.b1a, targets.b1b, 1.0);
     blurPass(targets.b1a, targets.b1b, 1.0);
     downsample(targets.b1a, targets.b2a, 0.16);
