@@ -6,7 +6,7 @@
   <meta name="robots" content="noindex, nofollow">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#070a10">
-  <meta name="description" content="Gargantua — a black hole rendered live in the browser.">
+  <meta name="description" content="Gargantua — a black hole built from strands of light, rendered live in the browser.">
   <title>Gargantua · Zipeng</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23070a10'/%3E%3Ccircle cx='17' cy='15' r='7' fill='none' stroke='%23e4e4ec' stroke-width='1.6'/%3E%3Cpath d='M3 22L30 11' stroke='%23d8c4ae' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E">
   <style>
@@ -37,7 +37,8 @@
       -webkit-font-smoothing: antialiased;
     }
 
-    /* The picture rises out of the dark once, when its first frame exists. */
+    /* The picture rises out of the dark once, when its first frame exists.
+       It is a real object in space: drag to move around it. */
     #gargantua {
       position: fixed;
       inset: 0;
@@ -47,13 +48,19 @@
       height: 100%;
       opacity: 0;
       transition: opacity 2.4s cubic-bezier(0.22, 0.61, 0.36, 1);
+      cursor: grab;
+      touch-action: none;
+    }
+
+    #gargantua.is-held {
+      cursor: grabbing;
     }
 
     .is-live #gargantua {
       opacity: 1;
     }
 
-    /* Static stand-in for browsers without WebGL. */
+    /* Static stand-in for browsers without WebGL 2. */
     .fallback {
       position: fixed;
       inset: 0;
@@ -73,7 +80,6 @@
       transform: rotate(-21deg);
     }
 
-    /* The haze around the hole. */
     .fallback-scene::before {
       content: "";
       position: absolute;
@@ -93,7 +99,6 @@
       transform: translate(-50%, -50%);
     }
 
-    /* Misty shadow, photon ring, then the lensed far side of the disk. */
     .fallback-arc {
       width: calc(var(--rs) * 4.4);
       height: calc(var(--rs) * 4.4);
@@ -108,8 +113,6 @@
         rgba(70, 80, 112, 0) 100%);
     }
 
-    /* The near side of the disk, seen almost edge-on: white across the hole,
-       fraying into a wing of dust on the left. */
     .fallback-blade {
       top: 51.2%;
       width: 100%;
@@ -195,6 +198,9 @@
       .fallback { display: block; }
     </style>
   </noscript>
+  <script type="importmap">
+    { "imports": { "three": "./vendor/three-0.170.0.module.min.js" } }
+  </script>
 </head>
 <body>
   <canvas id="gargantua" aria-hidden="true"></canvas>
@@ -207,202 +213,293 @@
     <p class="caption-line">Light bends. Time slows. Nothing escapes.</p>
   </main>
 
-  <script id="vs" type="x-shader/x-vertex">
-attribute vec2 aPos;
-varying vec2 vUv;
-void main() {
-  vUv = aPos * 0.5 + 0.5;
-  gl_Position = vec4(aPos, 0.0, 1.0);
-}
+  <script>
+    // If the library cannot be loaded, or the page has no WebGL 2, show the still.
+    window.__gargantuaFail = function (msg) {
+      document.documentElement.classList.add('no-webgl');
+      if (window.console && msg) console.warn('[gargantua] ' + msg);
+    };
+    window.addEventListener('error', function (e) {
+      if (e.target && e.target.tagName === 'SCRIPT') window.__gargantuaFail('library unavailable');
+    }, true);
   </script>
 
-  <!-- Disk material: rendered every frame into an (azimuth x log-radius) texture
-       with mipmaps, so the ray tracer can sample it filtered at any scale. -->
-  <script id="fs-disk" type="x-shader/x-fragment">
-precision highp float;
-uniform vec2 uSize;
-uniform float uTime;
-uniform vec4 uTexA;   // gas: contrast of the broad, medium and fine streaks; brightness of threads
-uniform vec4 uTexB;   // spiral pitch (log-radius per turn); dust: contrast of clouds and clumps, brightness of strokes
+  <script type="module">
+import * as THREE from 'three';
 
-const float TAU = 6.28318530717959;
-const float R_IN = 1.8;
-const float R_OUT = 14.0;
-const float LOG_SPAN = 2.0512707;   // log(R_OUT / R_IN): texture rows are uniform in log-radius
+// The disk is not a picture on a plane. It is tens of thousands of strands of
+// light, each a short piece of an orbit around the hole, placed in space with
+// a little height above or below the plane and turning at its own speed. The
+// strands only add light, so the disk is sheer where they are few and burns
+// out to white where they are many.
+//
+// Gravity is applied to the geometry itself. For every point of every strand
+// the vertex shader looks up where the hole makes that point appear, and
+// draws it there. A second pass draws the image whose light went round the
+// far side of the hole. The table behind this is exact: it is built once, on
+// load, from the paths of a few thousand rays.
 
-vec2 hash22(vec2 p) {
-  vec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
-  p3 += dot(p3, p3.yzx + 33.33);
-  return fract((p3.xx + p3.yz) * p3.zy);
+const canvas = document.getElementById('gargantua');
+const root = document.documentElement;
+const search = window.location.search || '';
+const mq = q => !!(window.matchMedia && window.matchMedia(q).matches);
+const reduced = mq('(prefers-reduced-motion: reduce)');
+const coarse = mq('(pointer: coarse)');
+const mobile = coarse || window.innerWidth < 768;
+const debug = /[?&]debug=1/.test(search);
+const deg = Math.PI / 180;
+const fail = window.__gargantuaFail;
+
+// ---- The look: every number that shapes the picture ----
+const look = {
+  // Camera: distance (rs), height above the disk plane (degrees), roll of
+  // the disk axis, position of the hole, diameter of its shadow as a share
+  // of the frame height. Then the same for a tall frame, where the diameter
+  // is a share of the width.
+  dist: 60, incl: 7.2, roll: -21, cx: 0.745, cy: 0.42, hole: 0.47,
+  rollTall: -34, cxTall: 0.60, cyTall: 0.36, holeTall: 0.50,
+  // Strands: how many, and how many pieces each is drawn in; inner and outer
+  // radius; how fast their number falls with radius; the radius the
+  // brightness profile starts from, its strength, how fast it falls.
+  count: mobile ? 26000 : 80000, pieces: mobile ? 20 : 32,
+  rIn: 1.9, rOut: 12, crowd: 1.5, fluxIn: 1.8, gain: 2.5, fall: 2.2,
+  // Width of a strand (rs), spread of their brightness, half-thickness of
+  // the disk (rs) and how much it grows with radius, share of strands
+  // lofted well above it.
+  width: 0.02, spread: 0.9, thick: 0.14, flare: 0.004, loft: 0.05,
+  // Colour: temperature at radius 3 (K), how fast it cools outward, spread
+  // between strands, saturation.
+  tIn: 7000, tSlope: 0.5, tSpread: 0.12, sat: 0.6,
+  // Motion: orbital speed, spiral pitch. Least half-width of a drawn strand
+  // in pixels. Doppler shift in brightness and in colour.
+  spin: 1.25, pitch: 0.02, minHalf: 0.7, doppler: 0.12, dopplerT: 0.5,
+  // Thin glowing gas around the hole: brightness and radius of a dense core,
+  // then of a wide halo; brightness of the photon ring.
+  fog: 0.2, fogR: 2.8, halo: 0.03, haloR: 5.5, ring: 0.6,
+  // Camera response: exposure, share of the light in each of five halos
+  // (tightest first), white level, sharpness of the shoulder, vignette,
+  // grain.
+  exposure: 1.0, glow1: 0.10, glow2: 0.10, glow3: 0.07, glow4: 0.05, glow5: 0.03,
+  white: 0.74, knee: 3.5, vignette: 0.5, grain: 1.2,
+  // Stars. Planet: orbit radius, tilt, where the orbit crosses the disk
+  // plane, where the planet starts on it, size.
+  stars: 5, planetR: 6.2, planetInc: 30, planetNode: 140, planetPhase: 45, planetSize: 0.14
+};
+if (debug) {
+  const lm = /[?&]look=([^&]+)/.exec(search);
+  if (lm) {
+    decodeURIComponent(lm[1]).split(',').forEach(kv => {
+      const pair = kv.split(':');
+      if (pair.length === 2 && Object.prototype.hasOwnProperty.call(look, pair[0]) && isFinite(+pair[1])) look[pair[0]] = +pair[1];
+    });
+  }
 }
 
-// Gradient noise on a lattice that closes around the ring after `py` cells
-// and is sheared into a trailing spiral: one turn shifts it by `arms` cells
-// in radius, and the lattice keys follow, so the pattern has no seam.
-float gnoise(vec2 p, float py, float arms, float seed) {
-  vec2 i = floor(p);
-  vec2 f = p - i;
-  vec2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
-  float w0 = floor((i.y + 0.5) / py);
-  float w1 = floor((i.y + 1.5) / py);
-  vec2 k0 = vec2(i.x - arms * w0 + seed, i.y - w0 * py);
-  vec2 k1 = vec2(i.x - arms * w1 + seed, i.y + 1.0 - w1 * py);
-  vec2 g00 = hash22(k0) * 2.0 - 1.0;
-  vec2 g10 = hash22(k0 + vec2(1.0, 0.0)) * 2.0 - 1.0;
-  vec2 g01 = hash22(k1) * 2.0 - 1.0;
-  vec2 g11 = hash22(k1 + vec2(1.0, 0.0)) * 2.0 - 1.0;
-  float n = mix(mix(dot(g00, f), dot(g10, f - vec2(1.0, 0.0)), u.x),
-                mix(dot(g01, f - vec2(0.0, 1.0)), dot(g11, f - vec2(1.0, 1.0)), u.x), u.y);
-  return clamp(0.5 + 0.9 * n, 0.0, 1.0);
+// ---- Paths of light around the hole (Schwarzschild, rs = 1) ----
+// A ray is described in its own plane by u = 1/r as a function of the angle
+// psi swept around the hole, counted from the direction of the camera:
+// u'' = 1.5 u^2 - u.
+const D = look.dist;
+const B_CRIT = 1.5 * Math.sqrt(3);      // rays with a smaller impact parameter are captured
+const LUT_W = 768, LUT_H = 96;          // angle x radius
+const PSI_MAX = 3 * Math.PI;
+const R_MIN = 1.55, R_MAX = 24;
+const SKY_W = 512, SKY_L0 = Math.log(1e-5), SKY_L1 = Math.log(38);
+
+// Follows the ray with impact parameter `b` from the camera. Calls
+// onCross(j, psi, outgoing) each time it crosses radius rj[j], and returns
+// the angle of closest approach (or -1 if the hole captures it).
+function shoot(b, uj, onCross, psiStop) {
+  let u = 1 / D, psi = 0;
+  let v = Math.sqrt(Math.max(1 / (b * b) - u * u * (1 - u), 0));
+  const h = Math.min(0.003, 0.004 * b);
+  const H = uj.length;
+  let jIn = H - 1, jOut = H, outgoing = false, apex = -1;
+  for (let n = 0; n < 400000; n++) {
+    const k1v = 1.5 * u * u - u;
+    const u2 = u + 0.5 * h * v, v2 = v + 0.5 * h * k1v;
+    const k2v = 1.5 * u2 * u2 - u2;
+    const u3 = u + 0.5 * h * v2, v3 = v + 0.5 * h * k2v;
+    const k3v = 1.5 * u3 * u3 - u3;
+    const u4 = u + h * v3, v4 = v + h * k3v;
+    const k4v = 1.5 * u4 * u4 - u4;
+    const un = u + h / 6 * (v + 2 * v2 + 2 * v3 + v4);
+    const vn = v + h / 6 * (k1v + 2 * k2v + 2 * k3v + k4v);
+    if (!outgoing) {
+      while (jIn >= 0 && un >= uj[jIn]) { onCross(jIn, psi + h * (uj[jIn] - u) / (un - u), false); jIn--; }
+      if (vn < 0) {
+        outgoing = true;
+        apex = psi + h * v / (v - vn);
+        jOut = jIn + 1;
+      }
+    }
+    if (outgoing) {
+      while (jOut < H && un <= uj[jOut]) { onCross(jOut, psi + h * (uj[jOut] - u) / (un - u), true); jOut++; }
+      if (jOut >= H) break;
+    }
+    u = un; v = vn; psi += h;
+    if (u > 0.985 || psi > psiStop) break;
+  }
+  return apex;
 }
 
-// Noise with `fr` cells per unit of log-radius across the flow and `py`
-// cells around the ring along it, wound into a trailing spiral. A scale
-// the texture cannot resolve is faded out instead of aliasing.
-float flow(float lr, float psi, float fr, float py, float seed) {
-  float arms = floor(fr * uTexB.x + 0.5);
-  float seen = smoothstep(1.2, 2.6, min(uSize.y / (fr * LOG_SPAN), uSize.x / py));
-  return 0.5 + (gnoise(vec2(lr * fr + arms * psi / TAU, psi * py / TAU), py, arms, seed) - 0.5) * seen;
+// Interpolates y(x) through points with increasing x (cubic Hermite).
+function hermite(xs, ys, n, x, hint) {
+  let k = hint[0];
+  while (k < n - 2 && xs[k + 1] < x) k++;
+  while (k > 0 && xs[k] > x) k--;
+  hint[0] = k;
+  const x0 = xs[k], x1 = xs[k + 1], y0 = ys[k], y1 = ys[k + 1];
+  const dx = x1 - x0;
+  if (dx <= 0) return y0;
+  const m0 = k > 0 ? (y1 - ys[k - 1]) / (x1 - xs[k - 1]) : (y1 - y0) / dx;
+  const m1 = k < n - 2 ? (ys[k + 2] - y0) / (xs[k + 2] - x0) : (y1 - y0) / dx;
+  const t = Math.min(Math.max((x - x0) / dx, 0), 1), t2 = t * t, t3 = t2 * t;
+  return (2 * t3 - 3 * t2 + 1) * y0 + (t3 - 2 * t2 + t) * dx * m0 + (-2 * t3 + 3 * t2) * y1 + (t3 - t2) * dx * m1;
 }
 
-// Light of the hot gas, as zero-mean log2 brightness: long silky streaks at
-// three scales, each many times longer than wide. `threads` are hairlines
-// along the level sets of two more fields, lit in stretches.
-float streaks(float lr, float psi, float seed, out float threads) {
-  float broad = 0.5 * (flow(lr, psi, 3.0, 2.0, seed + 3.0) + flow(lr, psi, 7.0, 3.0, seed + 11.0)) - 0.5;
-  float mid = 0.40 * flow(lr, psi, 29.0, 5.0, seed + 23.0) + 0.33 * flow(lr, psi, 61.0, 7.0, seed + 37.0)
-            + 0.27 * flow(lr, psi, 113.0, 9.0, seed + 43.0) - 0.5;
-  float fine = 0.55 * flow(lr, psi, 149.0, 9.0, seed + 53.0) + 0.45 * flow(lr, psi, 197.0, 11.0, seed + 71.0) - 0.5;
-  float ta = 1.0 - abs(2.0 * flow(lr, psi, 53.0, 3.0, seed + 97.0) - 1.0);
-  float tb = 1.0 - abs(2.0 * flow(lr, psi, 113.0, 4.0, seed + 113.0) - 1.0);
-  float lit = smoothstep(0.42, 0.75, flow(lr, psi, 6.0, 13.0, seed + 131.0));
-  threads = (pow(ta, 12.0) + 0.7 * pow(tb, 7.0)) * lit;
-  return uTexA.x * broad + uTexA.y * mid + uTexA.z * fine;
+// The lens table. For a point at radius r whose direction from the hole
+// makes the angle psi with the direction to the camera, it gives the impact
+// parameter b of the ray that reaches it, and how b changes with psi and r.
+// psi up to pi is the direct image; from pi to 2 pi the light went round the
+// far side of the hole.
+function buildLens() {
+  const rj = new Float64Array(LUT_H), uj = new Float64Array(LUT_H);
+  for (let j = 0; j < LUT_H; j++) { rj[j] = R_MIN * Math.pow(R_MAX / R_MIN, j / (LUT_H - 1)); uj[j] = 1 / rj[j]; }
+  const inc = [], out = [];
+  for (let j = 0; j < LUT_H; j++) { inc.push([]); out.push([]); }
+  const stop = PSI_MAX + 0.4;
+  const run = b => shoot(b, uj, (j, psi, outgoing) => (outgoing ? out : inc)[j].push(b, psi), stop);
+  const bTop = R_MAX / Math.sqrt(1 - 1 / R_MAX) * 1.002;
+  for (let k = 1; k <= 900; k++) run(bTop * k / 900);
+  for (let k = 0; k <= 112; k++) { const d = Math.pow(10, -k / 16); run(B_CRIT + d); run(B_CRIT - d); }
+  // The ray that just touches each radius marks where the two branches meet.
+  const apexB = new Float64Array(LUT_H), apexPsi = new Float64Array(LUT_H);
+  for (let j = 0; j < LUT_H; j++) {
+    apexB[j] = rj[j] / Math.sqrt(1 - 1 / rj[j]);
+    apexPsi[j] = shoot(apexB[j] * (1 - 1e-9), uj, () => {}, stop);
+  }
+
+  const B = new Float64Array(LUT_W * LUT_H);
+  const xs = new Float64Array(2400), ys = new Float64Array(2400), hint = [0];
+  for (let j = 0; j < LUT_H; j++) {
+    const a = [], pin = inc[j], pout = out[j];
+    for (let k = 0; k < pin.length; k += 2) if (pin[k] < apexB[j]) a.push([pin[k + 1], pin[k]]);
+    a.push([apexPsi[j], apexB[j]]);
+    for (let k = 0; k < pout.length; k += 2) if (pout[k] < apexB[j]) a.push([pout[k + 1], pout[k]]);
+    a.sort((p, q) => p[0] - q[0]);
+    let n = 0;
+    xs[n] = 0; ys[n] = 0; n++;
+    for (const p of a) if (p[0] > xs[n - 1] + 1e-7) { xs[n] = p[0]; ys[n] = p[1]; n++; }
+    hint[0] = 0;
+    for (let i = 0; i < LUT_W; i++) {
+      const psi = PSI_MAX * i / (LUT_W - 1);
+      B[j * LUT_W + i] = psi >= xs[n - 1] ? ys[n - 1] : hermite(xs, ys, n, psi, hint);
+    }
+  }
+  const data = new Float32Array(LUT_W * LUT_H * 4);
+  const dpsi = PSI_MAX / (LUT_W - 1);
+  for (let j = 0; j < LUT_H; j++) {
+    const j0 = Math.max(j - 1, 0), j1 = Math.min(j + 1, LUT_H - 1);
+    for (let i = 0; i < LUT_W; i++) {
+      const i0 = Math.max(i - 1, 0), i1 = Math.min(i + 1, LUT_W - 1);
+      const o = (j * LUT_W + i) * 4;
+      data[o] = B[j * LUT_W + i];
+      data[o + 1] = (B[j * LUT_W + i1] - B[j * LUT_W + i0]) / ((i1 - i0) * dpsi);
+      data[o + 2] = (B[j1 * LUT_W + i] - B[j0 * LUT_W + i]) / (rj[j1] - rj[j0]);
+      data[o + 3] = 0;
+    }
+  }
+  const tex = new THREE.DataTexture(data, LUT_W, LUT_H, THREE.RGBAFormat, THREE.FloatType);
+  tex.needsUpdate = true;
+  return tex;
 }
 
-// Dust, as zero-mean log2 density. It is turbulent, not combed: clouds and
-// clumps about as long as they are wide. `motes` are dense knots at five
-// sizes, as round as the clumps. Seen almost edge-on, all of it flattens
-// into the short strokes of a dust bank.
-float dust(float lr, float psi, float seed, out float motes) {
-  float cloud = 0.55 * flow(lr, psi, 3.0, 13.0, seed + 151.0) + 0.45 * flow(lr, psi, 7.0, 29.0, seed + 173.0) - 0.5;
-  float clump = 0.55 * flow(lr, psi, 17.0, 97.0, seed + 191.0) + 0.45 * flow(lr, psi, 43.0, 251.0, seed + 211.0) - 0.5;
-  motes = 0.26 * smoothstep(0.54, 0.66, flow(lr, psi, 13.0, 61.0, seed + 229.0))
-        + 0.26 * smoothstep(0.54, 0.66, flow(lr, psi, 21.0, 101.0, seed + 251.0))
-        + 0.22 * smoothstep(0.54, 0.66, flow(lr, psi, 34.0, 163.0, seed + 263.0))
-        + 0.16 * smoothstep(0.54, 0.66, flow(lr, psi, 55.0, 263.0, seed + 281.0))
-        + 0.10 * smoothstep(0.54, 0.66, flow(lr, psi, 89.0, 431.0, seed + 293.0));
-  return uTexB.y * cloud + uTexB.z * clump;
+// The sky table: the direction a ray ends up travelling in, as an angle
+// around the hole from the direction of the camera, against its impact
+// parameter. Without a hole the angle would be pi minus the angle of view.
+function buildSky() {
+  const data = new Float32Array(SKY_W * 4);
+  const far = [1 / 400];
+  for (let i = 0; i < SKY_W; i++) {
+    const b = B_CRIT + Math.exp(SKY_L0 + (SKY_L1 - SKY_L0) * i / (SKY_W - 1));
+    let psiFar = -1;
+    shoot(b, far, (j, psi, outgoing) => { if (outgoing) psiFar = psi; }, 40);
+    data[i * 4] = psiFar < 0 ? 40 : psiFar + Math.asin(Math.min(b / 400 * Math.sqrt(1 - 1 / 400), 1));
+  }
+  const tex = new THREE.DataTexture(data, SKY_W, 1, THREE.RGBAFormat, THREE.FloatType);
+  tex.needsUpdate = true;
+  return tex;
 }
 
-float omegaAt(float r) {
-  return 1.25 * pow(r, -1.5);
+// ---- Strands ----
+function mulberry(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
-void main() {
-  vec2 uv = gl_FragCoord.xy / uSize;
-  float phi = (uv.x - 0.5) * TAU;
-  float lr = uv.y * LOG_SPAN;
-  float r = R_IN * exp(lr);
-
-  // Keplerian differential rotation. Two layers are cross-faded so the shear
-  // never winds up without bound; each is invisible while it resets.
-  float omega = omegaAt(r);
-  float omega0 = omegaAt(5.0);
-  float P = 48.0;
-  float tA = fract(uTime / P);
-  float tB = fract(tA + 0.5);
-  float wA = 0.5 - 0.5 * cos(tA * TAU);
-  float wB = 1.0 - wA;
-  float base = phi - mod(omega0 * uTime, TAU);
-  float psiA = base - (omega - omega0) * (tA - 0.5) * P;
-  float psiB = base - (omega - omega0) * (tB - 0.5) * P + 2.1;
-  float thA, thB;
-  float xsA = streaks(lr, psiA, 0.0, thA);
-  float xsB = streaks(lr, psiB, 59.0, thB);
-  float moA, moB;
-  float xdA = dust(lr, psiA, 0.0, moA);
-  float xdB = dust(lr, psiB, 59.0, moB);
-  // The zero-mean fields are blended at constant variance, so the contrast
-  // does not pulse with the cross-fade.
-  float nrm = inversesqrt(wA * wA + wB * wB);
-  float e = exp2((wA * xsA + wB * xsB) * nrm) + uTexA.w * (wA * thA + wB * thB);
-  float rho = exp2((wA * xdA + wB * xdB) * nrm) * (1.0 + uTexB.w * max(0.2 + (wA * (moA - 0.2) + wB * (moB - 0.2)) * nrm, 0.0));
-  float tintA = 0.6 * flow(lr, psiA, 67.0, 5.0, 277.0) + 0.4 * flow(lr, psiA, 149.0, 7.0, 293.0) - 0.5;
-  float tintB = 0.6 * flow(lr, psiB, 67.0, 5.0, 336.0) + 0.4 * flow(lr, psiB, 149.0, 7.0, 352.0) - 0.5;
-  float tint = 0.5 + 1.8 * (wA * tintA + wB * tintB) * nrm;
-  // Square-root encoding keeps precision in the dim gaps.
-  gl_FragColor = vec4(sqrt(clamp(e * 0.25, 0.0, 1.0)), sqrt(clamp(rho * 0.125, 0.0, 1.0)), clamp(tint, 0.0, 1.0), 1.0);
+// Brightness of the disk seen from straight above, against radius: zero at
+// its inner edge, a peak just outside it, then a steep fall. Peak of 1.
+function profile(r) {
+  const x = r / look.fluxIn;
+  return Math.pow(Math.max(1 - 1 / Math.sqrt(x), 0) / (x * x * x) * 17.65, look.fall);
 }
-  </script>
 
-  <script id="fs-trace" type="x-shader/x-fragment">
-precision highp float;
-precision highp int;
-varying vec2 vUv;
-uniform vec2 uRes;
-uniform vec2 uJitter;
-uniform float uTime;
-uniform vec3 uCamPos;
-uniform vec3 uCamRight;
-uniform vec3 uCamUp;
-uniform vec3 uCamFwd;
-uniform float uFocal;
-uniform vec2 uCenter;
-uniform float uEnc;
-uniform int uMaxSteps;
-uniform float uPxPerRad;
-uniform vec3 uRingBand;   // impact parameter: start of the supersampled band, end of its 4x4 part, end of its 2x2 part
-uniform sampler2D uDisk;
-uniform vec2 uDiskSize;
-uniform vec4 uGas;        // hot gas: brightness, how fast its depth falls with radius, depth at the flux peak, glow above the plane
-uniform vec2 uStrand;     // how much the gas breaks up into separate strands as it thins out; how far their colours spread
-uniform vec4 uGasT;       // its colour: temperature (K) where opaque, slope as it thins, saturation; how fast its brightness falls with radius
-uniform vec4 uDust;       // dust sheet: optical depth, radius where it starts, radius of full depth, radius of the rim
-uniform vec4 uDustL;      // its light: brightness near the hole, radius where that halves, how fast it falls beyond, how much denser dust is brighter
-uniform vec4 uDustT;      // density offset of the sheet, temperature (K), saturation, softness (mip bias)
-uniform vec4 uDustS;      // shading: relief, self-shadow, how much it follows the streaks of the gas; how much the sheet thins towards its rim
-uniform vec3 uShift;      // strength of the Doppler change in brightness and in colour; radius where the gas ends
-uniform vec4 uBank;       // dust is thick on one side: direction of that side (xz), share left elsewhere, light scattered backward
-uniform vec4 uFog;        // thin glowing gas around the hole: brightness and radius of a dense core, then of a wide halo
-uniform float uStars;
-uniform float uEinstein;  // Einstein angle of the hole for the far sky, radians
-uniform vec4 uPlanet;     // xyz centre, w radius (world units)
-uniform vec3 uGalaxy;     // direction of a faint background galaxy
-uniform vec3 uMwNormal;   // Milky Way plane normal
-uniform vec3 uMwCentre;   // direction of the galactic centre, in that plane
+function buildStrands(N, S) {
+  const base = new Float32Array((S + 1) * 2 * 3);
+  for (let k = 0; k <= S; k++) {
+    for (let e = 0; e < 2; e++) {
+      const o = (k * 2 + e) * 3;
+      base[o] = k / S; base[o + 1] = e ? 1 : -1; base[o + 2] = 0;
+    }
+  }
+  const index = [];
+  for (let k = 0; k < S; k++) { const a = 2 * k; index.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
 
-// Units: Schwarzschild radius rs = 1 (M = 0.5). Black hole at the origin,
-// accretion disk in the y = 0 plane, camera far out and a little above it.
+  const rand = mulberry(20261113);
+  const gauss = () => Math.sqrt(-2 * Math.log(Math.max(rand(), 1e-12))) * Math.cos(2 * Math.PI * rand());
+  const a = look.rIn, b = look.rOut, k = look.crowd;
+  const ea = Math.pow(a, 1 - k), eb = Math.pow(b, 1 - k);
+  const orbit = new Float32Array(N * 4), lk = new Float32Array(N * 4);
+  for (let i = 0; i < N; i++) {
+    const r = Math.pow(ea + rand() * (eb - ea), 1 / (1 - k));
+    const share = (1 - k) / (eb - ea) * Math.pow(r, -k);       // strands per unit of radius, as a share of all
+    const span = 0.25 + 1.3 * Math.pow(rand(), 2);             // angle the strand covers
+    const lofted = rand() < look.loft;
+    // Height: a slab with soft faces, so that from the side the disk is a
+    // band of light and not a line.
+    const y = ((rand() * 2 - 1) * 1.25 + 0.3 * gauss()) * (look.thick + look.flare * r) * (lofted ? 2.5 : 1);
+    const w = look.width * (0.6 + 0.8 * rand()) * Math.pow(r / 4, 0.4);
+    const m = Math.exp(look.spread * gauss() - 0.5 * look.spread * look.spread) * (lofted ? 0.35 : 1);
+    orbit[i * 4] = r; orbit[i * 4 + 1] = rand() * 2 * Math.PI; orbit[i * 4 + 2] = span; orbit[i * 4 + 3] = y;
+    // Brightness of the strand itself, set so that all strands together
+    // give the profile.
+    lk[i * 4] = profile(r) * 2 * Math.PI / (N * share * span * w) * m;
+    lk[i * 4 + 1] = w;
+    lk[i * 4 + 2] = look.tIn * Math.pow(r / 3, -look.tSlope) * (1 + look.tSpread * gauss());
+    lk[i * 4 + 3] = rand();
+  }
+  const geo = new THREE.InstancedBufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(base, 3));
+  geo.setIndex(index);
+  geo.setAttribute('aOrbit', new THREE.InstancedBufferAttribute(orbit, 4));
+  geo.setAttribute('aLook', new THREE.InstancedBufferAttribute(lk, 4));
+  geo.instanceCount = N;
+  return geo;
+}
+
+// ---- Shaders ----
+const GLSL_COMMON = /* glsl */`
 const float PI = 3.14159265358979;
 const float TAU = 6.28318530717959;
 const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
-const float R_IN = 1.8;
-const float R_OUT = 14.0;
-const float LOG_SPAN = 2.0512707;   // log(R_OUT / R_IN): texture rows are uniform in log-radius
-const float R_ESC = 18.0;           // the path is integrated inside this radius only
-const vec3 FOG_CORE = vec3(0.88, 0.84, 1.00);
-const vec3 FOG_HALO = vec3(0.64, 0.80, 1.10);
-const int MAX_STEPS = 900;
-
-#ifdef ES3
-#define STEP_BOUND uMaxSteps
-#define DISK_LOD(uv, l) textureLod(uDisk, uv, l)
-#else
-#define STEP_BOUND MAX_STEPS
-#ifdef HAS_LOD
-#define DISK_LOD(uv, l) texture2DLodEXT(uDisk, uv, l)
-#else
-#define DISK_LOD(uv, l) texture2D(uDisk, uv)
-#endif
-#endif
-
-// Without float render targets the light is stored in 8 bits, on a
-// fourth-root curve so the dark sky keeps enough steps.
-vec3 enc(vec3 c) {
-  return uEnc > 0.5 ? sqrt(sqrt(max(c, 0.0) / 12.0)) : c;
-}
-
+const float B_CRIT = 2.5980762;
 float hash21(vec2 p) {
   vec3 p3 = fract(vec3(p.xyx) * 0.1031);
   p3 += dot(p3, p3.yzx + 33.33);
@@ -464,118 +561,195 @@ vec3 blackbody(float t) {
   vec3 c = exp(vec3(0.0, -4374.0, -10680.0) * u);
   return c / dot(c, LUMA);
 }
+`;
 
-// Radial flux of a thin relativistic disk: zero at the innermost stable
-// orbit, a peak just outside it, r^-3 far out. Normalised to a peak of 1.
-float diskFlux(float r) {
-  float x = r / R_IN;
-  return max(1.0 - inversesqrt(x), 0.0) / (x * x * x) * 17.65;
+// Where the hole makes a point of the scene appear.
+const GLSL_LENS = /* glsl */`
+#define LUT_W ${LUT_W}
+#define LUT_H ${LUT_H}
+#define PSI_MAX ${PSI_MAX.toFixed(8)}
+#define R_MIN ${R_MIN.toFixed(4)}
+#define R_MAX ${R_MAX.toFixed(4)}
+uniform sampler2D uLens;
+uniform vec3 uCamDir;      // from the hole to the camera
+uniform float uSinScale;   // sine of the angle of view per unit of impact parameter
+
+// Impact parameter of the ray that reaches radius r at the angle psi, and
+// its change with psi and with r.
+vec3 lensLookup(float r, float psi) {
+  float fx = clamp(psi / PSI_MAX, 0.0, 1.0) * float(LUT_W - 1);
+  float fy = clamp(log(r / R_MIN) / log(R_MAX / R_MIN), 0.0, 1.0) * float(LUT_H - 1);
+  ivec2 i0 = ivec2(int(fx), int(fy));
+  ivec2 i1 = min(i0 + 1, ivec2(LUT_W - 1, LUT_H - 1));
+  vec2 f = vec2(fx, fy) - vec2(i0);
+  vec3 a = texelFetch(uLens, i0, 0).rgb;
+  vec3 b = texelFetch(uLens, ivec2(i1.x, i0.y), 0).rgb;
+  vec3 c = texelFetch(uLens, ivec2(i0.x, i1.y), 0).rgb;
+  vec3 d = texelFetch(uLens, i1, 0).rgb;
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
 }
 
-// Redshift of gas on a circular orbit, exact for Schwarzschild: gravitational
-// and Doppler shift together. `lam` is the photon's angular momentum about
-// the spin axis; it is positive where the gas moves towards the camera.
-float redshift(float r, float lam) {
-  return sqrt(1.0 - 1.5 / r) / max(1.0 - sqrt(0.5 / (r * r * r)) * lam, 0.3);
+// Image of the point P: a point on its line of sight, at its true distance.
+// image 0 is the direct one; image 1 is the one whose light went round the
+// far side of the hole, so it appears on the opposite side.
+vec3 lensImage(vec3 P, float image, out vec3 L, out vec3 Ph, out vec3 e, out float cpsi, out float spsi, out float sgn) {
+  float rr = length(P);
+  Ph = P / rr;
+  cpsi = clamp(dot(Ph, uCamDir), -1.0, 1.0);
+  spsi = sqrt(max(1.0 - cpsi * cpsi, 1e-10));
+  e = (Ph - uCamDir * cpsi) / spsi;
+  sgn = image < 0.5 ? 1.0 : -1.0;
+  float psi = acos(cpsi);
+  L = lensLookup(rr, image < 0.5 ? psi : TAU - psi);
+  float sinT = min(L.x * uSinScale, 0.999);
+  vec3 dir = -uCamDir * sqrt(1.0 - sinT * sinT) + e * (sgn * sinT);
+  return cameraPosition + dir * length(P - cameraPosition);
+}
+`;
+
+const strandVert = /* glsl */`
+${GLSL_COMMON}
+${GLSL_LENS}
+attribute vec4 aOrbit;     // radius, angle at t = 0, angle covered, height
+attribute vec4 aLook;      // brightness, width (rs), temperature (K), seed
+uniform float uTime;
+uniform float uImage;
+uniform float uDist;
+uniform vec2 uViewport;    // pixels
+uniform float uPxPerRs;    // pixels per unit of impact parameter
+uniform vec4 uStrand;      // orbital speed, spiral pitch, least half-width (px), gain
+uniform vec3 uShift;       // Doppler shift in brightness and in colour; saturation
+uniform vec3 uAxis;        // angle around the hole of the point straight behind it; sine and cosine of the height of the camera above the disk
+varying float vX;
+varying vec3 vCol;
+
+#define LOOP 3600.0
+
+// Angle around the line of sight of a point on a circle about the hole, made
+// to keep rising with the angle a along the circle (a = 0 is straight behind
+// the hole). k is how close the circle comes to the line of sight.
+float around(float a, float k) {
+  return TAU * floor(a / TAU + 0.5) + atan(sin(a), k * cos(a));
 }
 
-vec2 diskUv(float r, float phi) {
-  return vec2(phi / TAU + 0.5, log(r / R_IN) / LOG_SPAN);
+void main() {
+  float side = position.y;
+  float r0 = aOrbit.x;
+  // Orbital speed, rounded so that the whole disk repeats after LOOP seconds
+  // and time never grows too large for the arithmetic.
+  float w = floor(uStrand.x * pow(r0, -1.5) * (LOOP / TAU) + 0.5) * (TAU / LOOP);
+  // The strand runs from the angle a0 to a1, counted from the point straight
+  // behind the hole.
+  float a0 = mod(aOrbit.y + w * uTime - 0.5 * aOrbit.z - uAxis.x + PI, TAU) - PI;
+  float a1 = a0 + aOrbit.z;
+  // Where a strand passes behind or in front of the hole, its image swings
+  // round the ring within a few degrees of arc. The points of the strand are
+  // spaced half evenly along it and half evenly around the line of sight, so
+  // that swing gets as many of them as it needs.
+  float k = max(abs(uAxis.y - abs(aOrbit.w) / r0 * uAxis.z), 0.012);
+  float want = mix(a0 + around(a0, k), a1 + around(a1, k), position.x);
+  float lo = a0, hi = a1;
+  for (int i = 0; i < 10; i++) {
+    float mid = 0.5 * (lo + hi);
+    if (mid + around(mid, k) < want) lo = mid; else hi = mid;
+  }
+  float a = 0.5 * (lo + hi);
+  float s = (a - a0) / aOrbit.z;
+  float phi = uAxis.x + a;
+  float r = r0 * (1.0 + uStrand.y * (s - 0.5) * aOrbit.z);
+  float cph = cos(phi), sph = sin(phi);
+  vec3 P = vec3(r * cph, aOrbit.w, r * sph);
+  vec3 tang = normalize(vec3(-sph + uStrand.y * cph, 0.0, cph + uStrand.y * sph));
+
+  vec3 L, Ph, e;
+  float cpsi, spsi, sgn;
+  vec3 Pv = lensImage(P, uImage, L, Ph, e, cpsi, spsi, sgn);
+  vec4 clip = projectionMatrix * viewMatrix * vec4(Pv, 1.0);
+
+  // How a small step along the strand moves its image: db away from the hole
+  // and dt around it, both in units of impact parameter.
+  float rr = length(P);
+  float b = L.x;
+  vec3 psiHat = e * cpsi - uCamDir * spsi;
+  vec3 phiHat = cross(uCamDir, e);
+  float At = min(b / (rr * spsi), 40.0);
+  float db = L.z * dot(tang, Ph) + sgn * L.y / rr * dot(tang, psiHat);
+  float dt = At * dot(tang, phiHat);
+  float dl = max(length(vec2(db, dt)), 1e-5);
+  float sinT = min(b * uSinScale, 0.999);
+  float cosT = sqrt(1.0 - sinT * sinT);
+  vec3 along = ((uCamDir * sinT + e * (sgn * cosT)) * db + phiHat * (sgn * dt)) / dl;
+  vec4 clip2 = projectionMatrix * viewMatrix * vec4(Pv + along * (0.02 * uDist), 1.0);
+  vec2 sdir = (clip2.xy / clip2.w - clip.xy / clip.w) * uViewport;
+  sdir /= max(length(sdir), 1e-6);
+
+  // A strand is a thin tube of light. The hole squeezes its image one way
+  // and stretches it the other; its apparent width follows.
+  vec2 n2 = vec2(-dt, db) / dl;
+  float Am = length(vec2(L.y / rr, L.z));
+  float wApp = aLook.y * length(vec2(n2.x * Am, n2.y * At)) * uPxPerRs;
+  // Thinner than a pixel, it is drawn a pixel wide and dimmer instead.
+  float hw = max(0.5 * wApp, uStrand.z);
+  float sigma = 0.7 * hw;
+  clip.xy += vec2(-sdir.y, sdir.x) * (side * 2.2 * sigma) * 2.0 / uViewport * clip.w;
+  gl_Position = clip;
+  vX = side * 2.2;
+
+  // Light: fades in and out along the strand, and beads a little.
+  float taper = smoothstep(0.0, 0.3, s) * smoothstep(1.0, 0.7, s);
+  float bead = 0.7 + 0.3 * sin(aLook.w * 40.0 + s * aOrbit.z * (6.0 + 30.0 * fract(aLook.w * 7.31)));
+  // Straight behind the hole a strand would be drawn out into a whole ring;
+  // so would the second image of a strand straight in front of it.
+  float behind = (uImage > 0.5 || cpsi < 0.0) ? smoothstep(0.008, 0.03, spsi) : 1.0;
+  // Gas moving towards the camera is brighter and bluer; light climbing out
+  // of the well is dimmer and redder.
+  float lam = -b * sgn * cross(Ph, uCamDir).y / spsi;
+  float g = sqrt(max(1.0 - 1.5 / rr, 0.0)) / max(1.0 - sqrt(0.5 / (rr * rr * rr)) * lam, 0.3);
+  float I = aLook.x * uStrand.w * taper * bead * behind * pow(g, 4.0 * uShift.x) * wApp / (sigma * 2.5066);
+  float T = aLook.z * pow(max(g, 0.05), uShift.y);
+  vCol = mix(vec3(1.0), blackbody(clamp(T, 1500.0, 14000.0)), uShift.z) * I;
 }
+`;
 
-float sq(float x) {
-  return x * x;
+const strandFrag = /* glsl */`
+varying float vX;
+varying vec3 vCol;
+void main() {
+  gl_FragColor = vec4(vCol * exp(-0.5 * vX * vX), 1.0);
 }
+`;
 
-// Light of the disk where a ray crosses its plane, premultiplied by its
-// opacity (alpha). s: path length so far. sweep: angle the ray has travelled
-// around the hole (lensed images are squeezed, so they need coarser samples).
-//
-// The disk has two parts. Hot gas glows by itself, in long silky streaks,
-// and thins out within a few radii. Further out a sheet of dust lies over
-// it and only scatters the light of the centre. From a low angle the dust
-// hides the gas; from higher up, as on the lensed far side, the gas shines
-// through it, reddened.
-vec4 diskSample(vec3 hit, vec3 dir, float s, float sweep, float lam) {
-  float r = length(hit.xz);
-  vec2 rhat = hit.xz / r;
-  vec2 uv = diskUv(r, atan(hit.z, hit.x));
-
-  // Footprint of the pixel on the plane: one pixel wide across the ray and
-  // stretched by 1/|cos| along it. Eight taps cover the long axis, so fine
-  // streaks survive at grazing angles.
-  float squeeze = max(sweep - 1.2, 0.0);
-  float foot = s * 2.0 / (uFocal * uRes.y) * (1.0 + 0.25 * squeeze * squeeze);
-  vec2 dh = dir.xz / max(length(dir.xz), 1e-4);
-  float cr = dot(dh, rhat);
-  float cr2 = cr * cr;
-  float inv = 1.0 / max(dir.y * dir.y, 0.01);
-  float footR = foot * sqrt(cr2 * inv + 1.0 - cr2);
-  float footP = foot * sqrt((1.0 - cr2) * inv + cr2);
-  float lodR = log2(max(footR * uDiskSize.y / (r * LOG_SPAN), 1e-4));
-  float lodP = log2(max(footP * uDiskSize.x / (TAU * r), 1e-4));
-  // Images of second and higher order pack the whole disk into a hairline:
-  // they take the mean light of the disk, or the photon ring would sparkle.
-  float lod = max(max(min(lodR, lodP), max(lodR, lodP) - 3.0), 0.0) + uDustT.w + smoothstep(3.6, 4.6, sweep) * 6.0;
-  vec2 axis = lodR > lodP ? vec2(0.0, exp2(lodR) / uDiskSize.y)
-                         : vec2(exp2(lodP) / uDiskSize.x, 0.0);
-  vec4 tx = (DISK_LOD(uv - axis * 0.4375, lod) + DISK_LOD(uv - axis * 0.3125, lod)
-           + DISK_LOD(uv - axis * 0.1875, lod) + DISK_LOD(uv - axis * 0.0625, lod)
-           + DISK_LOD(uv + axis * 0.0625, lod) + DISK_LOD(uv + axis * 0.1875, lod)
-           + DISK_LOD(uv + axis * 0.3125, lod) + DISK_LOD(uv + axis * 0.4375, lod)) * 0.125;
-  float e = sq(tx.r) * 4.0;
-  float rho = sq(tx.g) * 8.0;
-
-  float flux = diskFlux(r);
-  float g = redshift(r, lam);
-  float slant = 1.0 / max(abs(dir.y), 0.06);
-  // Both parts end on the same ragged rim.
-  float rim = 1.0 - smoothstep(0.955, 1.0, r * (0.97 + 0.06 * tx.b) / uDust.w);
-
-  // Hot gas. It glows almost as bright far out as near the hole, but its
-  // depth falls off fast. Near the hole it is opaque: plain white, without
-  // structure. Further out it is sheer, and shows only where the view runs
-  // through a lot of it: along its strands, and on the near side, which is
-  // seen edge-on.
-  // It also thins out just above its inner edge, which leaves a dark gap
-  // for the photon ring to stand in.
-  float reach = (1.0 - smoothstep(0.5 * uShift.z, uShift.z, r)) * smoothstep(1.06, 1.3, r / R_IN);
-  float strand = pow(e, 1.0 + uStrand.x * smoothstep(3.0, 7.0, r));
-  float aGas = 1.0 - exp(-uGas.z * pow(flux, uGas.y) * strand * reach * rim * slant);
-  // Opaque gas is white. Each sheer strand takes a colour of its own, from
-  // salmon to a pale blue. Approaching gas is brighter and bluer.
-  float T = uGasT.x * pow(max(aGas, 1e-3), uGasT.y) * pow(g, uShift.y) * (1.0 + uStrand.y * (tx.b - 0.5) * (1.0 - aGas));
-  vec3 gas = mix(vec3(1.0), blackbody(clamp(T, 1500.0, 12000.0)), uGasT.z) * (uGas.x * pow(flux, uGasT.w) * pow(g, 4.0 * uShift.x));
-
-  // Dust: none near the hole, then a sheet whose depth follows its density.
-  // Most of it lies on one side of the hole.
-  float sheet = smoothstep(uDust.y, uDust.z, r) * rim * (1.0 - uDustS.w * smoothstep(0.8, 1.0, r / uDust.w))
-              * mix(uBank.z, 1.0, smoothstep(0.1, 0.75, dot(rhat, uBank.xy)));
-  float tauD = uDust.x * sheet * max(rho + uDustT.x, 0.0) * slant;
-  float veil = 1.0 - exp(-tauD);
-  // It is lit from the centre: the side of a clump that faces the hole is
-  // bright and its far side in shade, and dense dust nearer the hole casts
-  // a soft shadow outward.
-  float dv = 1.5 * exp2(max(lodR, 0.0) + uDustT.w) / uDiskSize.y;
-  float rhoOut = sq(DISK_LOD(uv + vec2(0.0, dv), lod).g);
-  float rhoIn = sq(DISK_LOD(uv - vec2(0.0, dv), lod).g);
-  float relief = clamp(1.0 + uDustS.x * (rhoOut - rhoIn) / (rhoOut + rhoIn + 0.06), 0.2, 2.2);
-  float inner = sq(DISK_LOD(uv - vec2(0.0, 0.04), lod + 3.0).g) * 8.0;
-  float shade = clamp(1.0 - uDustS.y * (inner - 1.2), 0.3, 1.5);
-  // Dust scatters forward: it is bright where the light of the centre
-  // passes through it towards the camera, dim where it has to turn back.
-  float phase = mix(uBank.w, 1.0, smoothstep(-0.2, 0.7, -dot(rhat, dir.xz)));
-  float scat = uDustL.x / (1.0 + pow(r / uDustL.y, uDustL.z)) * pow(rho * 0.5, uDustL.w) * mix(1.0, e, uDustS.z) * relief * shade * phase;
-  float Td = uDustT.y * (0.9 + 0.2 * tx.b) * pow(clamp(scat * 2.5, 0.05, 2.0), 0.05);
-  vec3 dustLight = mix(vec3(1.0), blackbody(Td), uDustT.z) * scat;
-
-  // Dust reddens what shines through it. Images beyond the lensing ring are
-  // thinner than any pixel and are left out.
-  vec3 through = exp(-tauD * vec3(0.75, 1.0, 1.35));
-  vec3 rgb = dustLight * veil + gas * aGas * through;
-  return vec4(rgb * (1.0 - smoothstep(5.6, 6.4, sweep)), 1.0 - (1.0 - aGas) * (1.0 - veil));
+const skyVert = /* glsl */`
+varying vec2 vNdc;
+void main() {
+  vNdc = position.xy;
+  gl_Position = vec4(position.xy, 1.0, 1.0);
 }
+`;
 
+const skyFrag = /* glsl */`
+${GLSL_COMMON}
+#define SKY_W ${SKY_W}
+#define SKY_L0 ${SKY_L0.toFixed(6)}
+#define SKY_L1 ${SKY_L1.toFixed(6)}
+varying vec2 vNdc;
+uniform mat4 uProjInv;
+uniform mat4 uCamWorld;
+uniform vec3 uCamPos;
+uniform vec3 uCamDir;
+uniform float uDist;
+uniform sampler2D uSky;
+uniform vec4 uFog;         // brightness and radius of the core glow, then of the halo
+uniform float uRing;
+uniform float uCoarse;     // 1 when light is stored in 8 bits
+uniform float uStars;
+uniform float uEinstein;   // Einstein angle of the hole for the far sky, radians
+uniform float uPxPerRad;
+uniform vec3 uGalaxy;      // direction of a faint background galaxy
+uniform vec3 uMwNormal;    // Milky Way plane normal
+uniform vec3 uMwCentre;    // direction of the galactic centre, in that plane
+const vec3 FOG_CORE = vec3(0.88, 0.84, 1.00);
+const vec3 FOG_HALO = vec3(0.64, 0.80, 1.10);
 vec2 octa(vec3 d) {
   d /= (abs(d.x) + abs(d.y) + abs(d.z));
   vec2 sgn = vec2(d.x >= 0.0 ? 1.0 : -1.0, d.z >= 0.0 ? 1.0 : -1.0);
@@ -594,7 +768,7 @@ vec3 octaDecode(vec2 uv) {
 
 // A faint Milky Way: unresolved starlight in a band along the galactic plane,
 // wider and warmer towards the galactic centre, broken by a dark dust rift
-// and scattered dust clouds. `dens` scales the resolved star density.
+// and scattered dust clouds. 'dens' scales the resolved star density.
 vec3 milkyWay(vec3 d, out float dens) {
   float lat = dot(d, uMwNormal);
   float lon = atan(dot(d, cross(uMwNormal, uMwCentre)), dot(d, uMwCentre));
@@ -618,7 +792,7 @@ vec3 milkyWay(vec3 d, out float dens) {
 // One layer of stars, at most one per sky cell. Counts follow a power law
 // in brightness, N(>F) ~ F^-slope from bMin up to bMax, so most stars are
 // barely visible pinpoints and a few dominate. Colour follows temperature;
-// density rises in the Milky Way (`mw`) and in loose clusters.
+// density rises in the Milky Way ('mw') and in loose clusters.
 vec3 starLayer(vec3 d, vec2 unit, mat3 lens, float cells, float dens, float bMin, float bMax, float slope, float seed, float mw) {
   vec2 uv = unit * cells;
   vec2 ci = floor(uv);
@@ -663,7 +837,7 @@ vec3 galaxy(vec3 d) {
        + vec3(1.00, 0.88, 0.72) * (exp(-dot(g, g) / 9.0) * 0.05);
 }
 
-// The sky in direction `d`, reached by a ray that was bent by `turn` radians.
+// The sky in direction 'd', reached by a ray that was bent by 'turn' radians.
 // Near the hole the sky is stretched into arcs around the Einstein ring and
 // lies deep in the glare of the disk, so starlight thins out with the bending.
 vec3 starfield(vec3 d, float turn) {
@@ -695,12 +869,61 @@ vec3 starfield(vec3 d, float turn) {
   return col;
 }
 
-vec3 rayDir(vec2 pixelOffset) {
-  vec2 ndc = ((gl_FragCoord.xy + uJitter + pixelOffset) / uRes) * 2.0 - 1.0 - uCenter;
-  float aspect = uRes.x / uRes.y;
-  return normalize(uCamFwd * uFocal + uCamRight * (ndc.x * aspect) + uCamUp * ndc.y);
+float skyAngle(float b) {
+  float f = clamp((log(b - B_CRIT) - SKY_L0) / (SKY_L1 - SKY_L0), 0.0, 1.0) * float(SKY_W - 1);
+  int i = int(f);
+  return mix(texelFetch(uSky, ivec2(i, 0), 0).r, texelFetch(uSky, ivec2(min(i + 1, SKY_W - 1), 0), 0).r, f - float(i));
 }
 
+void main() {
+  vec4 v = uProjInv * vec4(vNdc, 1.0, 1.0);
+  vec3 rd = normalize((uCamWorld * vec4(v.xyz / v.w, 0.0)).xyz);
+  float cosT = dot(rd, -uCamDir);
+  vec3 col;
+  if (cosT <= 0.05) {
+    col = starfield(rd, 0.0);
+  } else {
+    float sinT = sqrt(max(1.0 - cosT * cosT, 0.0));
+    float b = uDist * sinT / sqrt(1.0 - 1.0 / uDist);
+    col = vec3(0.0);
+    if (b > B_CRIT + 2e-5) {
+      // The sky behind the hole, seen along the bent ray.
+      vec3 e = (rd + uCamDir * cosT) / max(sinT, 1e-6);
+      float ang = skyAngle(b);
+      col = starfield(normalize(uCamDir * cos(ang) + e * sin(ang)), ang - (PI - asin(sinT)));
+    }
+    // Thin hot gas around the hole glows faintly: this is the haze of the
+    // picture, and what fills the shadow with a pale light.
+    col += FOG_CORE * (uFog.x * exp(-b * b / (uFog.y * uFog.y))) + FOG_HALO * (uFog.z * exp(-b * b / (uFog.w * uFog.w)));
+    // The photon ring: light that circled the hole before it left.
+    float dr = (b - B_CRIT - 0.035) / 0.03;
+    col += vec3(0.95, 0.93, 1.0) * (uRing * exp(-dr * dr));
+  }
+  // In 8 bits the faint haze would show as steps: a little noise turns them
+  // into grain.
+  col += uCoarse * (hash21(gl_FragCoord.xy) + hash21(gl_FragCoord.yx * 1.31 + 7.0) - 1.0) / 255.0;
+  gl_FragColor = vec4(max(col, 0.0), 1.0);
+}
+`;
+
+const planetVert = /* glsl */`
+${GLSL_COMMON}
+${GLSL_LENS}
+varying vec3 vWorld;
+void main() {
+  vec3 P = (modelMatrix * vec4(position, 1.0)).xyz;
+  vWorld = P;
+  vec3 L, Ph, e;
+  float cpsi, spsi, sgn;
+  gl_Position = projectionMatrix * viewMatrix * vec4(lensImage(P, 0.0, L, Ph, e, cpsi, spsi, sgn), 1.0);
+}
+`;
+
+const planetFrag = /* glsl */`
+${GLSL_COMMON}
+varying vec3 vWorld;
+uniform vec4 uPlanet;      // xyz centre, w radius
+uniform float uTime;
 // An ocean world. Lit by the hot inner disk, a broad source, so the
 // terminator is soft; faintly lit from the disk plane on the side facing it.
 // Cloud bands drift as it spins, the ocean glints, and a thin atmosphere
@@ -726,247 +949,47 @@ vec3 planetShade(vec3 hp, vec3 rd) {
   c += vec3(0.42, 0.60, 1.00) * limb * (0.05 + 0.55 * key + 1.4 * back);
   return c;
 }
-
-vec3 traceRay(vec3 dir, out float cover) {
-  cover = 0.0;
-  vec3 p = uCamPos;
-  vec3 v = dir;
-  float cd = dot(p, v);
-  float b2 = dot(p, p) - cd * cd;
-  float b = sqrt(max(b2, 0.0));
-  float planetDist = length(uPlanet.xyz);
-
-  vec3 col = vec3(0.0);
-  float T = 1.0;
-
-  if (b > max(R_OUT, planetDist + uPlanet.w) + 0.3) {
-    // The ray meets nothing: its deflection is applied in closed form, to
-    // second order, from the camera's finite distance.
-    float L = -cd;
-    vec3 q = p + v * L;
-    vec3 n = -q / b;
-    float frac = 0.5 + L * (2.0 * L * L + 3.0 * b2) / (4.0 * pow(b2 + L * L, 1.5));
-    float alpha = (2.0 / b + 2.945 / b2) * frac;
-    col = starfield(normalize(v * cos(alpha) + n * sin(alpha)), alpha);
-  } else {
-    float h2 = b2;
-    // Conserved along the path; decides how the orbiting gas is shifted.
-    float lam = p.z * v.x - p.x * v.z;
-    bool escaped = false;
-    float s = 0.0;
-    float sweep = 0.0;
-    // The camera is far out. The ray runs straight to the sphere where the
-    // integration starts: on the way it bends by less than a milliradian if
-    // it comes near the hole at all.
-    float rc2 = dot(p, p);
-    if (rc2 > R_ESC * R_ESC && cd < 0.0) {
-      s = -cd - sqrt(R_ESC * R_ESC - b2);
-      sweep = asin(b / R_ESC) - asin(b * inversesqrt(rc2));
-      p += v * s;
-    }
-    vec3 prev = p;
-    for (int i = 0; i < STEP_BOUND; i++) {
-#ifndef ES3
-      if (i >= uMaxSteps) break;
-#endif
-      float r2 = dot(p, p);
-      float r = sqrt(r2);
-      // Captured, or still circling after more than a full turn: no light.
-      if (r2 < 1.0 || sweep > 7.0) break;
-      if (r > R_ESC && dot(p, v) > 0.0) { escaped = true; break; }
-
-      // Velocity Verlet: second-order accurate, so orbits near the photon
-      // sphere keep their phase and the shadow edge stays smooth.
-      float dt = clamp(r * 0.035, 0.01, 0.7);
-      // Thin hot gas around the hole glows faintly: this is the haze of the
-      // picture. It lies in the scene, so the disk hides what is behind it.
-      // Light from deep in the well arrives dimmed.
-      col += T * (FOG_CORE * (uFog.x * exp(-r2 / (uFog.y * uFog.y))) + FOG_HALO * (uFog.z * exp(-r2 / (uFog.w * uFog.w))))
-           * (sq(1.0 - 1.0 / r) * dt);
-      vec3 a = -1.5 * h2 * p / (r2 * r2 * r);
-      vec3 pn = p + v * dt + a * (0.5 * dt * dt);
-      float rn2 = max(dot(pn, pn), 0.04);
-      vec3 an = -1.5 * h2 * pn / (rn2 * rn2 * sqrt(rn2));
-      v += (a + an) * (0.5 * dt);
-      p = pn;
-      s += dt;
-      sweep += b * dt / r2;
-
-      // The planet is tested against this step of the bent ray, so its image
-      // is lensed like everything else near the hole. Only steps inside the
-      // thin shell of its orbital radius can reach it.
-      float tPlanet = 2.0;
-      vec3 seg = p - prev;
-      vec3 mid = (prev + p) * 0.5 - uPlanet.xyz;
-      if (abs(r - planetDist) < uPlanet.w + 1.5 * dt && dot(mid, mid) < (uPlanet.w + dt) * (uPlanet.w + dt)) {
-        vec3 oc = prev - uPlanet.xyz;
-        float qa = dot(seg, seg);
-        float qb = dot(oc, seg);
-        float disc = qb * qb - qa * (dot(oc, oc) - uPlanet.w * uPlanet.w);
-        if (disc > 0.0) {
-          float th = (-qb - sqrt(disc)) / qa;
-          if (th >= 0.0 && th <= 1.0) tPlanet = th;
-        }
-      }
-
-      if (prev.y * p.y < 0.0 && prev.y / (prev.y - p.y) < tPlanet) {
-        float t = prev.y / (prev.y - p.y);
-        vec3 hit = mix(prev, p, t);
-        float rh = length(hit.xz);
-        if (rh > R_IN && rh < R_OUT) {
-          vec4 e = diskSample(hit, normalize(v), s, sweep, lam);
-          col += T * e.rgb;
-          T *= 1.0 - e.a;
-          if (T < 0.02) break;
-        }
-      }
-
-      if (tPlanet <= 1.0) {
-        col += T * planetShade(mix(prev, p, tPlanet), normalize(v));
-        cover = T;
-        T = 0.0;
-        break;
-      }
-
-      // The hot gas also glows a little above and below the plane. That
-      // gives the disk body: its edge is soft, not a knife edge.
-      float rr = length(p.xz);
-      if (uGas.w > 0.0 && rr > R_IN && rr < R_OUT) {
-        float H = 0.03 + 0.035 * rr;
-        float ay = abs(p.y);
-        if (ay < 2.4 * H) {
-          float eh = DISK_LOD(diskUv(rr, atan(p.z, p.x)), 4.0).r;
-          float fl = diskFlux(rr);
-          float depth = uGas.z * pow(fl, uGas.y) * (eh * eh * 4.0) * (1.0 - smoothstep(0.5 * uShift.z, uShift.z, rr));
-          float j = uGas.x * pow(fl, uGasT.w) * (1.0 - exp(-depth)) * pow(redshift(rr, lam), 4.0 * uShift.x)
-                  * exp(-ay * ay / (H * H)) / (1.7725 * H);
-          col += T * (j * uGas.w * dt);
-        }
-      }
-      prev = p;
-    }
-    if (escaped) {
-      // The rest of the bending, from here to infinity, in closed form.
-      float vl = length(v);
-      vec3 vd = v / vl;
-      float be = b / vl;
-      float xr = dot(p, vd);
-      float tail = (2.0 - xr * (2.0 * xr * xr + 3.0 * be * be) / pow(dot(p, p), 1.5)) / (2.0 * be);
-      vd = normalize(vd + normalize(vd * xr - p) * tan(tail));
-      col += T * starfield(vd, acos(clamp(dot(dir, vd), -1.0, 1.0)));
-    }
-  }
-  return col;
-}
-
 void main() {
-  // The photon ring packs nested images of the whole disk into a hairline.
-  // Pixels on it take a 4x4 grid of rays, the band next to it a 2x2 grid
-  // (on top of the temporal jitter); everything else takes one ray.
-  vec3 centre = rayDir(vec2(0.0));
-  float cd = dot(uCamPos, centre);
-  float b = sqrt(max(dot(uCamPos, uCamPos) - cd * cd, 0.0));
-  float side = (b > uRingBand.x && b < uRingBand.y) ? 4.0 : (b > uRingBand.x && b < uRingBand.z) ? 2.0 : 1.0;
-  int n = int(side * side);
-  vec3 col = vec3(0.0);
-  float cover = 0.0;
-  for (int k = 0; k < 16; k++) {
-    if (k >= n) break;
-    float kx = mod(float(k), side);
-    float ky = floor(float(k) / side);
-    float cv;
-    col += traceRay(rayDir((vec2(kx, ky) + 0.5) / side - 0.5), cv);
-    cover += cv;
-  }
-  // Alpha carries the planet coverage to the composite (1 = no planet).
-  // In 8 bits, a little noise turns the steps of smooth gradients into
-  // grain that the temporal mean smooths out.
-  float dither = uEnc > 0.5 ? (hash21(gl_FragCoord.xy + fract(uTime * 7.31) * 113.0) - 0.5) / 255.0 : 0.0;
-  gl_FragColor = vec4(enc(col / float(n)) + dither, 1.0 - cover / float(n));
+  gl_FragColor = vec4(planetShade(vWorld, normalize(vWorld - cameraPosition)), 1.0);
 }
-  </script>
+`;
 
-  <script id="fs-resolve" type="x-shader/x-fragment">
-precision highp float;
+const passVert = /* glsl */`
 varying vec2 vUv;
-uniform sampler2D uCur;
-uniform sampler2D uHist;
-uniform float uAlpha;
-uniform float uEnc;
-uniform vec2 uTexel;
-uniform float uAspect;
-uniform vec4 uGuard;    // moving planet: guarded stretch from xy to zw (uv)
-uniform float uGuardR;  // its half-width in uv height units, 0 = off
-uniform float uSeed;    // changes every frame: seed of the dither for 8-bit targets
-vec3 dec(vec3 c) { return uEnc > 0.5 ? (c * c) * (c * c) * 12.0 : c; }
-vec3 enc(vec3 c) { return uEnc > 0.5 ? sqrt(sqrt(max(c, 0.0) / 12.0)) : c; }
 void main() {
-  vec3 c = dec(texture2D(uCur, vUv).rgb);
-  vec3 h = dec(texture2D(uHist, vUv).rgb);
-  // Around the moving planet the history is clamped to this frame's local
-  // range, so the planet does not drag a ghost trail behind it.
-  vec2 pa = (vUv - uGuard.xy) * vec2(uAspect, 1.0);
-  vec2 ba = (uGuard.zw - uGuard.xy) * vec2(uAspect, 1.0);
-  float along = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-8), 0.0, 1.0);
-  float g = uGuardR > 0.0 ? 1.0 - smoothstep(uGuardR, uGuardR * 2.0, length(pa - ba * along)) : 0.0;
-  if (g > 0.0) {
-    vec3 lo = c;
-    vec3 hi = c;
-    for (int j = -1; j <= 1; j++) {
-      for (int i = -1; i <= 1; i++) {
-        vec3 sn = dec(texture2D(uCur, vUv + uTexel * vec2(float(i), float(j))).rgb);
-        lo = min(lo, sn);
-        hi = max(hi, sn);
-      }
-    }
-    h = mix(h, clamp(h, lo, hi), g);
-  }
-  float aCur = texture2D(uCur, vUv).a;
-  float aHist = texture2D(uHist, vUv).a;
-  vec3 p3 = fract(vec3(gl_FragCoord.xyx) * 0.1031 + uSeed);
-  p3 += dot(p3, p3.yzx + 33.33);
-  float dither = uEnc > 0.5 ? (fract((p3.x + p3.y) * p3.z) - 0.5) / 255.0 : 0.0;
-  gl_FragColor = vec4(enc(mix(h, c, uAlpha)) + dither, mix(aHist, aCur, uAlpha));
+  vUv = position.xy * 0.5 + 0.5;
+  gl_Position = vec4(position.xy, 0.0, 1.0);
 }
-  </script>
+`;
 
-  <script id="fs-down" type="x-shader/x-fragment">
-precision highp float;
+const downFrag = /* glsl */`
 varying vec2 vUv;
 uniform sampler2D uTex;
 uniform vec2 uTexel;
-uniform float uEnc;
-vec3 dec(vec3 c) { return uEnc > 0.5 ? (c * c) * (c * c) * 12.0 : c; }
-vec3 enc(vec3 c) { return uEnc > 0.5 ? sqrt(sqrt(max(c, 0.0) / 12.0)) : c; }
 void main() {
-  vec3 s = dec(texture2D(uTex, vUv + uTexel * vec2(-1.0, -1.0)).rgb)
-         + dec(texture2D(uTex, vUv + uTexel * vec2( 1.0, -1.0)).rgb)
-         + dec(texture2D(uTex, vUv + uTexel * vec2(-1.0,  1.0)).rgb)
-         + dec(texture2D(uTex, vUv + uTexel * vec2( 1.0,  1.0)).rgb);
-  gl_FragColor = vec4(enc(s * 0.25), 1.0);
+  vec3 s = texture2D(uTex, vUv + uTexel * vec2(-1.0, -1.0)).rgb
+         + texture2D(uTex, vUv + uTexel * vec2( 1.0, -1.0)).rgb
+         + texture2D(uTex, vUv + uTexel * vec2(-1.0,  1.0)).rgb
+         + texture2D(uTex, vUv + uTexel * vec2( 1.0,  1.0)).rgb;
+  gl_FragColor = vec4(s * 0.25, 1.0);
 }
-  </script>
+`;
 
-  <script id="fs-blur" type="x-shader/x-fragment">
-precision highp float;
+const blurFrag = /* glsl */`
 varying vec2 vUv;
 uniform sampler2D uTex;
 uniform vec2 uDir;
-uniform float uEnc;
-vec3 dec(vec3 c) { return uEnc > 0.5 ? (c * c) * (c * c) * 12.0 : c; }
-vec3 enc(vec3 c) { return uEnc > 0.5 ? sqrt(sqrt(max(c, 0.0) / 12.0)) : c; }
 void main() {
   vec2 o1 = uDir * 1.3846153846;
   vec2 o2 = uDir * 3.2307692308;
-  vec3 c = dec(texture2D(uTex, vUv).rgb) * 0.2270270270;
-  c += (dec(texture2D(uTex, vUv + o1).rgb) + dec(texture2D(uTex, vUv - o1).rgb)) * 0.3162162162;
-  c += (dec(texture2D(uTex, vUv + o2).rgb) + dec(texture2D(uTex, vUv - o2).rgb)) * 0.0702702703;
-  gl_FragColor = vec4(enc(c), 1.0);
+  vec3 c = texture2D(uTex, vUv).rgb * 0.2270270270;
+  c += (texture2D(uTex, vUv + o1).rgb + texture2D(uTex, vUv - o1).rgb) * 0.3162162162;
+  c += (texture2D(uTex, vUv + o2).rgb + texture2D(uTex, vUv - o2).rgb) * 0.0702702703;
+  gl_FragColor = vec4(c, 1.0);
 }
-  </script>
+`;
 
-  <script id="fs-composite" type="x-shader/x-fragment">
-precision highp float;
+const compositeFrag = /* glsl */`
 varying vec2 vUv;
 uniform sampler2D uScene;
 uniform sampler2D uBloom1;
@@ -975,17 +998,14 @@ uniform sampler2D uBloom3;
 uniform sampler2D uBloom4;
 uniform sampler2D uBloom5;
 uniform float uTime;
-uniform float uEnc;
 uniform float uExposure;
 uniform vec4 uGlowA;   // share of the light spread over halos 1 to 4, tightest first
 uniform vec4 uGlowB;   // share of the widest halo; white level; sharpness of the shoulder
 uniform vec2 uGrade;   // vignette, grain
-uniform vec2 uTexel;
 const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
-vec3 dec(vec3 c) { return uEnc > 0.5 ? (c * c) * (c * c) * 12.0 : c; }
 // Response of a print: straight through the shadows and mid-tones, then a
-// shoulder that closes on a white short of full and a little cool. The
-// overexposed disk turns milky instead of burning out.
+// shoulder that closes on a white short of full and a little cool. Where the
+// strands crowd together the disk turns milky instead of burning out.
 vec3 film(vec3 x) {
   vec3 w = uGlowB.y * vec3(0.992, 0.985, 1.016);
   return x / pow(1.0 + pow(x / w, vec3(uGlowB.z)), vec3(1.0 / uGlowB.z));
@@ -998,29 +1018,16 @@ float hash(vec2 p) {
   p3 += dot(p3, p3.yzx + 33.33);
   return fract((p3.x + p3.y) * p3.z);
 }
-// Slight soft focus: takes the edge off sub-pixel lines such as the photon
-// ring without blurring the image as a whole.
-vec3 soft(vec2 uv) {
-  vec2 o = uTexel * 0.65;
-  return dec(texture2D(uScene, uv).rgb) * 0.84
-       + (dec(texture2D(uScene, uv + o).rgb) + dec(texture2D(uScene, uv - o).rgb)
-        + dec(texture2D(uScene, uv + vec2(o.x, -o.y)).rgb) + dec(texture2D(uScene, uv + vec2(-o.x, o.y)).rgb)) * 0.04;
-}
 void main() {
   vec2 q = vUv - 0.5;
-  vec3 c = soft(vUv);
-  // Glare of the lens. It is a point-spread function: every halo is the
-  // scene itself, blurred, and takes its share of the light. The wider the
-  // halo, the bluer. The planet is a dark body in front of the light and
-  // takes little of it. (The haze around the hole is not glare: it is gas
-  // in the scene, and the tracer renders it.)
-  float planet = 1.0 - texture2D(uScene, vUv).a;
-  c = c * (1.0 - (uGlowA.x + uGlowA.y + uGlowA.z + uGlowA.w + uGlowB.x))
-    + dec(texture2D(uBloom1, vUv).rgb) * (uGlowA.x * (1.0 - 0.95 * planet))
-    + dec(texture2D(uBloom2, vUv).rgb) * vec3(1.00, 0.98, 1.02) * (uGlowA.y * (1.0 - 0.92 * planet))
-    + dec(texture2D(uBloom3, vUv).rgb) * vec3(0.92, 0.94, 1.08) * (uGlowA.z * (1.0 - 0.85 * planet))
-    + dec(texture2D(uBloom4, vUv).rgb) * vec3(0.66, 0.84, 1.16) * (uGlowA.w * (1.0 - 0.70 * planet))
-    + dec(texture2D(uBloom5, vUv).rgb) * vec3(0.34, 0.66, 1.18) * (uGlowB.x * (1.0 - 0.50 * planet));
+  // Glare of the lens: every halo is the scene itself, blurred, and takes
+  // its share of the light. The wider the halo, the bluer.
+  vec3 c = texture2D(uScene, vUv).rgb * (1.0 - (uGlowA.x + uGlowA.y + uGlowA.z + uGlowA.w + uGlowB.x))
+    + texture2D(uBloom1, vUv).rgb * uGlowA.x
+    + texture2D(uBloom2, vUv).rgb * vec3(1.00, 0.98, 1.02) * uGlowA.y
+    + texture2D(uBloom3, vUv).rgb * vec3(0.92, 0.94, 1.08) * uGlowA.z
+    + texture2D(uBloom4, vUv).rgb * vec3(0.66, 0.84, 1.16) * uGlowA.w
+    + texture2D(uBloom5, vUv).rgb * vec3(0.34, 0.66, 1.18) * uGlowB.x;
   c = film(max(c, 0.0) * uExposure);
   c *= 1.0 - uGrade.x * smoothstep(0.15, 0.80, dot(q, q));
   c = srgb(c);
@@ -1031,673 +1038,425 @@ void main() {
   c += grain * (0.7 + uGrade.y * 2.2 * smoothstep(0.02, 0.30, l) * (1.0 - 0.75 * smoothstep(0.70, 1.0, l))) / 255.0;
   gl_FragColor = vec4(c, 1.0);
 }
-  </script>
+`;
 
-  <script>
-(function () {
-  'use strict';
-
-  var canvas = document.getElementById('gargantua');
-  var root = document.documentElement;
-  var search = window.location.search || '';
-  var mq = function (q) { return !!(window.matchMedia && window.matchMedia(q).matches); };
-  var reduced = mq('(prefers-reduced-motion: reduce)');
-  var coarse = mq('(pointer: coarse)');
-  var mobile = coarse || window.innerWidth < 768;
-  var debug = /[?&]debug=1/.test(search);
-  var skyOnly = /[?&]sky=1/.test(search);
-  var zoomDbg = /[?&]zoom=1/.test(search);
-  var deg = Math.PI / 180;
-
-  // ---- The look: every number that shapes the picture ----
-  var look = {
-    // Camera: distance (rs), height above the disk plane (degrees), roll of
-    // the disk axis, position of the hole, diameter of its shadow as a share
-    // of the frame height. Then the same for a tall frame, where the
-    // diameter is a share of the width.
-    dist: 60, incl: 7.2, roll: -21, cx: 0.745, cy: 0.42, hole: 0.47,
-    rollTall: -34, cxTall: 0.60, cyTall: 0.36, holeTall: 0.50,
-    // Hot gas: brightness and how fast it falls with radius; depth at the
-    // flux peak and how fast that falls; where the gas ends; how much it
-    // breaks into strands as it thins, and how far their colours spread;
-    // glow above the plane. Temperature where opaque, how fast the colour
-    // warms as it thins, saturation.
-    gain: 2.5, glowFall: 0.45, tau: 0.57, falloff: 1.1, gasEnd: 9.5, strand: 1.8, tint: 1.3, haze: 0.03,
-    tPeak: 6500, tSlope: 0.1, sat: 0.7,
-    // Thin glowing gas around the hole: brightness and radius of a dense
-    // core, then of a wide halo.
-    fog: 1.1, fogR: 2.2, halo: 0.04, haloR: 3.6,
-    // Dust sheet: optical depth, where it starts, where it is fully there,
-    // its rim, how much it thins towards the rim.
-    dustTau: 1.5, dust0: 5.0, dust1: 7.2, dustEdge: 13, dustThin: 1.0,
-    // Its light: brightness near the hole, radius where that halves, how
-    // fast it falls beyond, how much brighter dense dust is, how much it
-    // follows the streaks of the gas; relief and self-shadow of its shading.
-    dustGain: 1.7, dustHalf: 6.8, dustFall: 8.5, dustTex: 1.0, dustStreak: 0.35, relief: 0.5, shade: 0.5,
-    // Density offset (below zero leaves holes), temperature, saturation,
-    // softness of the texture.
-    dustFloor: -0.2, dustT: 3700, dustSat: 0.58, soft: 0,
-    // The dust bank: where its middle is, in degrees from the left end of
-    // the disk towards the far side; share of dust left elsewhere; share
-    // of light scattered backward.
-    bankDir: 0, bankLo: 0, dustBack: 0.22,
-    // Doppler shift of the orbiting gas, in brightness and in colour.
-    doppler: 0.12, dopplerT: 0.5,
-    // Texture. Gas: contrast of the broad, medium and fine streaks,
-    // brightness of threads. Spiral pitch. Dust: contrast of clouds and
-    // clumps, brightness of the short strokes.
-    texBroad: 0.7, texMid: 2.4, texFine: 1.8, texThreads: 2.5, pitch: 0.35,
-    texCloud: 1.6, texClump: 1.6, texSpeck: 4.0,
-    // Camera response: exposure, share of the light in each of five halos
-    // (tightest first), white level, sharpness of the shoulder, vignette,
-    // grain.
-    exposure: 1.0, glow1: 0.07, glow2: 0.07, glow3: 0.07, glow4: 0.05, glow5: 0.02,
-    white: 0.74, knee: 3.5, vignette: 0.5, grain: 1.2,
-    // Stars. Planet: orbit radius, tilt, where the orbit crosses the disk
-    // plane, where the planet starts on it, size.
-    stars: 5, planetR: 6.2, planetInc: 30, planetNode: 140, planetPhase: 45, planetSize: 0.14
-  };
-  if (debug) {
-    var lm = /[?&]look=([^&]+)/.exec(search);
-    if (lm) {
-      decodeURIComponent(lm[1]).split(',').forEach(function (kv) {
-        var pair = kv.split(':');
-        if (pair.length === 2 && look.hasOwnProperty(pair[0]) && isFinite(+pair[1])) look[pair[0]] = +pair[1];
-      });
-    }
-  }
-
-  function fail(msg) {
-    root.classList.add('no-webgl');
-    if (window.console && msg) console.warn('[gargantua] ' + msg);
-  }
-
-  var opts = {
-    alpha: false, antialias: false, depth: false, stencil: false,
-    premultipliedAlpha: false, preserveDrawingBuffer: false,
-    powerPreference: 'high-performance'
-  };
-  var gl = null;
-  var isGL2 = false;
+// ---- Start ----
+function start() {
+  // WebGL 2 on a real graphics chip. A browser that would draw this in
+  // software gets the still: a frame a second is worse than a picture.
+  if (!document.createElement('canvas').getContext('webgl2', { failIfMajorPerformanceCaveat: true })) { fail('WebGL unavailable'); return; }
+  let renderer;
   try {
-    gl = canvas.getContext('webgl2', opts);
-    if (gl) {
-      isGL2 = true;
-    } else {
-      gl = canvas.getContext('webgl', opts) || canvas.getContext('experimental-webgl', opts);
-    }
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, stencil: false, powerPreference: 'high-performance', failIfMajorPerformanceCaveat: true });
   } catch (e) {
-    gl = null;
-  }
-  if (!gl) { fail('WebGL unavailable'); return; }
-
-  // ---- HDR render targets (half float when the platform can render to them) ----
-  var hdrInternal = null, hdrType = null;
-  var lodExt = false;
-  if (isGL2) {
-    if (gl.getExtension('EXT_color_buffer_float') || gl.getExtension('EXT_color_buffer_half_float')) {
-      hdrInternal = gl.RGBA16F;
-      hdrType = gl.HALF_FLOAT;
-    }
-  } else {
-    var he = gl.getExtension('OES_texture_half_float');
-    var hl = gl.getExtension('OES_texture_half_float_linear');
-    gl.getExtension('EXT_color_buffer_half_float');
-    if (he && hl) {
-      hdrInternal = gl.RGBA;
-      hdrType = he.HALF_FLOAT_OES;
-    }
-    lodExt = !!gl.getExtension('EXT_shader_texture_lod');
-  }
-  var hdr = hdrType !== null && !/[?&]ldr=1/.test(search);
-
-  function makeTarget(w, h) {
-    var tex = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, tex);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    if (hdr) {
-      gl.texImage2D(gl.TEXTURE_2D, 0, hdrInternal, w, h, 0, gl.RGBA, hdrType, null);
-    } else {
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-    }
-    var fb = gl.createFramebuffer();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
-    var ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
-    gl.clearColor(0, 0, 0, 1);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.bindTexture(gl.TEXTURE_2D, null);
-    return { tex: tex, fb: fb, w: w, h: h, ok: ok };
-  }
-
-  // Mipmapped 8-bit texture for the disk material (wraps around in azimuth).
-  function makeDiskTexture(w, h) {
-    var tex = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, tex);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-    var fb = gl.createFramebuffer();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
-    var ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.bindTexture(gl.TEXTURE_2D, null);
-    return { tex: tex, fb: fb, w: w, h: h, ok: ok };
-  }
-
-  function freeTarget(t) {
-    gl.deleteFramebuffer(t.fb);
-    gl.deleteTexture(t.tex);
-  }
-
-  if (hdr) {
-    var probe = makeTarget(4, 4);
-    if (!probe.ok) hdr = false;
-    freeTarget(probe);
-  }
-  var encMode = hdr ? 0.0 : 1.0;
-
-  // ---- Shaders ----
-  function src(id) { return document.getElementById(id).textContent; }
-
-  function prep(source, isFrag, extra) {
-    if (!isGL2) return (extra || '') + source;
-    var head = '#version 300 es\n#define ES3 1\n';
-    if (isFrag) {
-      head += 'precision highp float;\nprecision highp int;\n#define varying in\n#define texture2D texture\nout vec4 fragColor;\n#define gl_FragColor fragColor\n';
-    } else {
-      head += '#define attribute in\n#define varying out\n';
-    }
-    return head + source;
-  }
-
-  function compile(type, source) {
-    var s = gl.createShader(type);
-    gl.shaderSource(s, source);
-    gl.compileShader(s);
-    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
-      throw new Error(gl.getShaderInfoLog(s) || 'shader compile failed');
-    }
-    return s;
-  }
-
-  var vertSrc = prep(src('vs'), false);
-  function program(fragId, extra) {
-    var p = gl.createProgram();
-    gl.attachShader(p, compile(gl.VERTEX_SHADER, vertSrc));
-    gl.attachShader(p, compile(gl.FRAGMENT_SHADER, prep(src(fragId), true, extra)));
-    gl.bindAttribLocation(p, 0, 'aPos');
-    gl.linkProgram(p);
-    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
-      throw new Error(gl.getProgramInfoLog(p) || 'program link failed');
-    }
-    var u = {};
-    var n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
-    for (var i = 0; i < n; i++) {
-      var info = gl.getActiveUniform(p, i);
-      u[info.name] = gl.getUniformLocation(p, info.name);
-    }
-    return { p: p, u: u };
-  }
-
-  var disk, trace, resolve, down, blur, composite;
-  try {
-    disk = program('fs-disk');
-    trace = program('fs-trace', lodExt ? '#extension GL_EXT_shader_texture_lod : enable\n#define HAS_LOD 1\n' : '');
-    resolve = program('fs-resolve');
-    down = program('fs-down');
-    blur = program('fs-blur');
-    composite = program('fs-composite');
-  } catch (e) {
-    fail(e.message);
+    fail('WebGL unavailable');
     return;
   }
+  const gl = renderer.getContext();
+  // Light is kept in half floats. Without them the picture still draws, in
+  // 8 bits: the faintest strands are lost and the glare is weaker.
+  const hdr = !!(gl.getExtension('EXT_color_buffer_float') || gl.getExtension('EXT_color_buffer_half_float')) && !/[?&]ldr=1/.test(search);
+  const texType = hdr ? THREE.HalfFloatType : THREE.UnsignedByteType;
+  renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+  renderer.setClearColor(0x000000, 1);
 
-  var buf = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-  gl.enableVertexAttribArray(0);
-  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
-  gl.disable(gl.DEPTH_TEST);
-  gl.disable(gl.BLEND);
-
-  // ---- Targets / resolution ----
-  var quality = mobile ? 0.7 : 1.0;
-  var maxSteps = mobile ? 520 : 900;
-  var targets = null;
-  var diskTex = null;
-  var histIndex = 0;
-  var histValid = false;
-  var frameIndex = 0;
-  var accum = 0;
-  var lastW = 0, lastH = 0, lastDpr = 0;
-
-  function destroyTargets() {
-    if (!targets) return;
-    freeTarget(targets.scene);
-    freeTarget(targets.hist[0]);
-    freeTarget(targets.hist[1]);
-    targets.glare.forEach(freeTarget);
-    targets.glareTmp.forEach(freeTarget);
-    targets = null;
-  }
-
-  // The disk is seen almost edge-on, which stretches the picture along the
-  // flow: the texture is four times finer around the ring than across it.
-  function ensureDiskTexture() {
-    var w = Math.min((mobile || quality < 0.6) ? 2048 : 4096, gl.getParameter(gl.MAX_TEXTURE_SIZE));
-    if (diskTex && diskTex.w === w) return;
-    if (diskTex) freeTarget(diskTex);
-    diskTex = makeDiskTexture(w, w / 4);
-  }
-
-  function viewportSize() {
-    var w = canvas.clientWidth || window.innerWidth || document.documentElement.clientWidth || 0;
-    var h = canvas.clientHeight || window.innerHeight || document.documentElement.clientHeight || 0;
-    return [w, h, Math.min(window.devicePixelRatio || 1, 2)];
-  }
-
-  function sizeChanged() {
-    var vs = viewportSize();
-    return vs[0] !== lastW || vs[1] !== lastH || vs[2] !== lastDpr;
-  }
-
-  function resize() {
-    var vs = viewportSize();
-    var cw = vs[0], ch = vs[1], dpr = vs[2];
-    if (cw < 2 || ch < 2) {
-      // Layout not ready yet (hidden tab, zero-size viewport); try again next frame.
-      destroyTargets();
-      return false;
-    }
-    lastW = cw; lastH = ch; lastDpr = dpr;
-
-    var tw = Math.round(cw * dpr * quality);
-    var th = Math.round(ch * dpr * quality);
-    var cap = mobile ? 1100000 : 2400000;
-    if (tw * th > cap) {
-      var s = Math.sqrt(cap / (tw * th));
-      tw = Math.round(tw * s);
-      th = Math.round(th * s);
-    }
-    tw = Math.max(32, tw);
-    th = Math.max(32, th);
-    canvas.width = tw;
-    canvas.height = th;
-
-    destroyTargets();
-    // Five halos for the glare, at 1/4 down to 1/64 of the resolution.
-    var glare = [], glareTmp = [];
-    for (var k = 2; k <= 6; k++) {
-      var gw = Math.max(1, tw >> k), gh = Math.max(1, th >> k);
-      glare.push(makeTarget(gw, gh));
-      glareTmp.push(makeTarget(gw, gh));
-    }
-    targets = {
-      scene: makeTarget(tw, th),
-      hist: [makeTarget(tw, th), makeTarget(tw, th)],
-      glare: glare,
-      glareTmp: glareTmp
-    };
-    ensureDiskTexture();
-    histValid = false;
-    frameIndex = 0;
-    accum = 0;
-    staticFramesLeft = STATIC_FRAMES;
-    return true;
-  }
-
-  // ---- Camera / interaction ----
-  var tmx = 0, tmy = 0, mx = 0, my = 0;
-  if (!coarse && !reduced) {
-    window.addEventListener('pointermove', function (e) {
-      tmx = (e.clientX / window.innerWidth) * 2 - 1;
-      tmy = (e.clientY / window.innerHeight) * 2 - 1;
-    }, { passive: true });
-    window.addEventListener('pointerleave', function () { tmx = 0; tmy = 0; });
-  }
-
-  function norm(a) {
-    var l = Math.sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]) || 1;
-    return [a[0] / l, a[1] / l, a[2] / l];
-  }
-  function cross(a, b) {
-    return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-  }
-  function dot(a, b) {
-    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-  }
-  function dist(a, b) {
-    var x = a[0] - b[0], y = a[1] - b[1], z = a[2] - b[2];
-    return Math.sqrt(x * x + y * y + z * z);
-  }
-  function smooth01(x) {
-    x = Math.max(0, Math.min(1, x));
-    return x * x * (3 - 2 * x);
-  }
-
-  // Sub-pixel jitter sequence for temporal anti-aliasing.
-  function halton(i, b) {
-    var f = 1, r = 0;
-    while (i > 0) { f /= b; r += f * (i % b); i = Math.floor(i / b); }
-    return r;
-  }
-  var jitters = [];
-  for (var ji = 1; ji <= 8; ji++) jitters.push([halton(ji, 2) - 0.5, halton(ji, 3) - 0.5]);
-
-  function bindTarget(t) {
-    gl.bindFramebuffer(gl.FRAMEBUFFER, t ? t.fb : null);
-    gl.viewport(0, 0, t ? t.w : canvas.width, t ? t.h : canvas.height);
-  }
-  function bindTex(loc, tex, unit) {
-    gl.activeTexture(gl.TEXTURE0 + unit);
-    gl.bindTexture(gl.TEXTURE_2D, tex);
-    gl.uniform1i(loc, unit);
-  }
-  function draw() { gl.drawArrays(gl.TRIANGLES, 0, 3); }
-
-  function blurPass(a, b, stride) {
-    gl.useProgram(blur.p);
-    gl.uniform1f(blur.u.uEnc, encMode);
-    bindTarget(b);
-    gl.uniform2f(blur.u.uDir, stride / a.w, 0);
-    bindTex(blur.u.uTex, a.tex, 0);
-    draw();
-    bindTarget(a);
-    gl.uniform2f(blur.u.uDir, 0, stride / a.h);
-    bindTex(blur.u.uTex, b.tex, 0);
-    draw();
-  }
-
-  function downsample(from, to) {
-    gl.useProgram(down.p);
-    gl.uniform1f(down.u.uEnc, encMode);
-    gl.uniform2f(down.u.uTexel, 1 / from.w, 1 / from.h);
-    bindTarget(to);
-    bindTex(down.u.uTex, from.tex, 0);
-    draw();
-  }
-
-  // Camera basis for an inclination above the disk plane, an azimuth around
-  // the hole and a roll about the view axis.
-  function cameraBasis(incl, az, roll) {
-    var D = look.dist;
-    var cp = [D * Math.cos(incl) * Math.sin(az), D * Math.sin(incl), D * Math.cos(incl) * Math.cos(az)];
-    var fwd = norm([-cp[0], -cp[1], -cp[2]]);
-    var right0 = norm(cross(fwd, [0, 1, 0]));
-    var up0 = cross(right0, fwd);
-    var cr = Math.cos(roll), sr = Math.sin(roll);
-    return {
-      cp: cp, fwd: fwd,
-      right: [right0[0] * cr + up0[0] * sr, right0[1] * cr + up0[1] * sr, right0[2] * cr + up0[2] * sr],
-      up: [-right0[0] * sr + up0[0] * cr, -right0[1] * sr + up0[1] * cr, -right0[2] * sr + up0[2] * cr]
-    };
-  }
-
-  // Framing by aspect ratio. A wide frame has the hole on the right, its
-  // arc cropped by the top edge, and the dust wing falling towards the
-  // caption. A tall frame brings the hole near the centre and turns the
-  // disk further onto the diagonal.
+  // Camera: fixed distance, free direction.
+  const camera = new THREE.PerspectiveCamera(10, 1.6, 4, 400);
+  const sinPerB = Math.sqrt(1 - 1 / D) / D;
+  const tanShadow = Math.tan(Math.asin(B_CRIT * sinPerB));
+  const smooth01 = x => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
+  // Framing by aspect ratio. A wide frame has the hole on the right, its arc
+  // cropped by the top edge. A tall frame brings the hole near the centre
+  // and turns the disk further onto the diagonal.
   function composition(aspect) {
-    var wide = smooth01((aspect - 0.8) / 0.55);
-    var hole = Math.min(look.holeTall * aspect, Math.max(look.hole, Math.min(1.125 * look.hole, 0.625 * look.hole * aspect)));
+    const wide = smooth01((aspect - 0.8) / 0.55);
+    const hole = Math.min(look.holeTall * aspect, Math.max(look.hole, Math.min(1.125 * look.hole, 0.625 * look.hole * aspect)));
     return {
-      hole: hole,
-      focal: hole / Math.tan(Math.asin(2.598 / look.dist)),
+      focal: hole / tanShadow,
       cx: look.cxTall + (look.cx - look.cxTall) * wide,
       cy: look.cyTall + (look.cy - look.cyTall) * wide,
       roll: (look.rollTall + (look.roll - look.rollTall) * wide) * deg
     };
   }
-
+  const norm = a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  function cameraBasis(incl, az, roll) {
+    const cp = [D * Math.cos(incl) * Math.sin(az), D * Math.sin(incl), D * Math.cos(incl) * Math.cos(az)];
+    const fwd = norm([-cp[0], -cp[1], -cp[2]]);
+    const right0 = norm(cross(fwd, [0, 1, 0]));
+    const up0 = cross(right0, fwd);
+    const cr = Math.cos(roll), sr = Math.sin(roll);
+    return {
+      cp, fwd,
+      right: [right0[0] * cr + up0[0] * sr, right0[1] * cr + up0[1] * sr, right0[2] * cr + up0[2] * sr],
+      up: [-right0[0] * sr + up0[0] * cr, -right0[1] * sr + up0[1] * cr, -right0[2] * sr + up0[2] * cr]
+    };
+  }
   // Sky features are fixed in the world and placed from the resting 16:10
   // view: a faint Milky Way across the upper-left sky, a small galaxy in it.
-  var restComp = composition(1.6);
-  var rest = cameraBasis(look.incl * deg, 0, restComp.roll);
-  function viewDir(sx, sy) {
-    var nx = sx / 1440 * 2 - 1 - (restComp.cx * 2 - 1), ny = 1 - sy / 900 * 2 - ((1 - restComp.cy) * 2 - 1);
-    return norm([0, 1, 2].map(function (k) { return rest.fwd[k] * restComp.focal + rest.right[k] * nx * 1.6 + rest.up[k] * ny; }));
-  }
-  // The sky direction actually seen at a screen point: the hole bends light
-  // toward itself, so nearby sky appears pushed outward (weak-field estimate).
+  const restComp = composition(1.6);
+  const rest = cameraBasis(look.incl * deg, 0, restComp.roll);
   function skyDir(sx, sy) {
-    var v = viewDir(sx, sy), p = rest.cp;
-    var L = -dot(p, v);
-    var q = [p[0] + v[0] * L, p[1] + v[1] * L, p[2] + v[2] * L];
-    var bb = Math.sqrt(dot(q, q));
-    var frac = 0.5 + L * (2 * L * L + 3 * bb * bb) / (4 * Math.pow(bb * bb + L * L, 1.5));
-    var al = (2 / bb + 2.945 / (bb * bb)) * frac;
-    return norm([0, 1, 2].map(function (k) { return v[k] * Math.cos(al) - q[k] / bb * Math.sin(al); }));
+    const nx = sx / 1440 * 2 - 1 - (restComp.cx * 2 - 1), ny = 1 - sy / 900 * 2 - ((1 - restComp.cy) * 2 - 1);
+    const v = norm([0, 1, 2].map(k => rest.fwd[k] * restComp.focal + rest.right[k] * nx * 1.6 + rest.up[k] * ny));
+    const p = rest.cp;
+    const L = -dot(p, v);
+    const q = [p[0] + v[0] * L, p[1] + v[1] * L, p[2] + v[2] * L];
+    const bb = Math.hypot(q[0], q[1], q[2]);
+    const frac = 0.5 + L * (2 * L * L + 3 * bb * bb) / (4 * Math.pow(bb * bb + L * L, 1.5));
+    const al = (2 / bb + 2.945 / (bb * bb)) * frac;
+    return norm([0, 1, 2].map(k => v[k] * Math.cos(al) - q[k] / bb * Math.sin(al)));
   }
-  var mwNormal = norm(cross(skyDir(640, -40), skyDir(-60, 420)));
-  var mwGuess = skyDir(1150, -420);
-  var mwOff = dot(mwGuess, mwNormal);
-  var mwCentre = norm([0, 1, 2].map(function (k) { return mwGuess[k] - mwNormal[k] * mwOff; }));
-  var galaxyDir = skyDir(235, 170);
+  const mwNormal = norm(cross(skyDir(640, -40), skyDir(-60, 420)));
+  const mwGuess = skyDir(1150, -420);
+  const mwOff = dot(mwGuess, mwNormal);
+  const mwCentre = norm([0, 1, 2].map(k => mwGuess[k] - mwNormal[k] * mwOff));
+  const galaxyDir = skyDir(235, 170);
 
   // A small planet on a close, tilted orbit, moving the way the disk turns.
-  // It starts above the dust wing, to the left of the hole. The orbit is
-  // turned so that the planet is high above the disk when it passes behind
-  // the hole: its lensed image then stays clear of the bright arcs, where it
-  // would smear into dark streaks. `planetNode` is where the orbit crosses
-  // the disk plane going up, in degrees around the hole from the right end
-  // of the disk towards the camera. The orbit follows the slow drift of the
-  // camera, so it keeps its place in the picture.
-  var DRIFT = 0.0005;
   function planetAt(t) {
-    var R = look.planetR, inc = look.planetInc * deg, node = look.planetNode * deg - t * DRIFT;
-    var th = look.planetPhase * deg + t * 1.25 * Math.pow(R, -1.5);
-    var c = Math.cos(th), s = Math.sin(th), ci = Math.cos(inc);
+    const R = look.planetR, inc = look.planetInc * deg, node = look.planetNode * deg;
+    const th = look.planetPhase * deg + t * look.spin * Math.pow(R, -1.5);
+    const c = Math.cos(th), s = Math.sin(th), ci = Math.cos(inc);
     return [R * (c * Math.cos(node) - s * Math.sin(node) * ci), R * s * Math.sin(inc), R * (c * Math.sin(node) + s * Math.cos(node) * ci)];
   }
 
-  var prevFwd = [0, 0, 0], prevUp = [0, 0, 0];
+  // Scene.
+  const lensTex = buildLens();
+  const skyTex = buildSky();
+  const scene = new THREE.Scene();
+  const camDir = new THREE.Vector3(0, 0, 1);
+  const viewport = new THREE.Vector2(1, 1);
+  const tri = new THREE.BufferGeometry();
+  tri.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3));
 
+  const skyMat = new THREE.ShaderMaterial({
+    vertexShader: skyVert, fragmentShader: skyFrag, depthTest: false, depthWrite: false,
+    uniforms: {
+      uProjInv: { value: camera.projectionMatrixInverse }, uCamWorld: { value: camera.matrixWorld },
+      uCamPos: { value: camera.position }, uCamDir: { value: camDir }, uDist: { value: D },
+      uSky: { value: skyTex }, uFog: { value: new THREE.Vector4() }, uRing: { value: 0 }, uCoarse: { value: hdr ? 0 : 1 },
+      uStars: { value: 0 }, uEinstein: { value: Math.sqrt(2 / D) }, uPxPerRad: { value: 1 },
+      uGalaxy: { value: new THREE.Vector3(...galaxyDir) }, uMwNormal: { value: new THREE.Vector3(...mwNormal) },
+      uMwCentre: { value: new THREE.Vector3(...mwCentre) }
+    }
+  });
+  const sky = new THREE.Mesh(tri, skyMat);
+  sky.frustumCulled = false;
+  sky.renderOrder = -10;
+  scene.add(sky);
+
+  const lensUniforms = () => ({ uLens: { value: lensTex }, uCamDir: { value: camDir }, uSinScale: { value: sinPerB } });
+  const planetMat = new THREE.ShaderMaterial({
+    vertexShader: planetVert, fragmentShader: planetFrag, side: THREE.DoubleSide,
+    uniforms: Object.assign(lensUniforms(), { uPlanet: { value: new THREE.Vector4() }, uTime: { value: 0 } })
+  });
+  const planet = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 40), planetMat);
+  planet.frustumCulled = false;
+  planet.renderOrder = -5;
+  scene.add(planet);
+
+  const strandCount = Math.round(look.count);
+  const strands = buildStrands(strandCount, Math.round(look.pieces));
+  // The picture starts with half of the strands, each twice as bright, and
+  // adds the rest while frames stay quick.
+  if (!reduced) strands.instanceCount = Math.round(strandCount * 0.5);
+  const strandMats = [0, 1].map(image => new THREE.ShaderMaterial({
+    vertexShader: strandVert, fragmentShader: strandFrag,
+    blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, depthTest: true, side: THREE.DoubleSide,
+    uniforms: Object.assign(lensUniforms(), {
+      uTime: { value: 0 }, uImage: { value: image }, uDist: { value: D }, uViewport: { value: viewport },
+      uPxPerRs: { value: 1 }, uStrand: { value: new THREE.Vector4() }, uShift: { value: new THREE.Vector3() },
+      uAxis: { value: new THREE.Vector3() }
+    })
+  }));
+  strandMats.forEach((mat, k) => {
+    const mesh = new THREE.Mesh(strands, mat);
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 10 + k;
+    scene.add(mesh);
+  });
+
+  // Post: glare and camera response.
+  const postScene = new THREE.Scene();
+  const postCam = new THREE.Camera();
+  const postMesh = new THREE.Mesh(tri, null);
+  postMesh.frustumCulled = false;
+  postScene.add(postMesh);
+  const passMat = (frag, uniforms) => new THREE.ShaderMaterial({ vertexShader: passVert, fragmentShader: frag, uniforms, depthTest: false, depthWrite: false });
+  const downMat = passMat(downFrag, { uTex: { value: null }, uTexel: { value: new THREE.Vector2() } });
+  const blurMat = passMat(blurFrag, { uTex: { value: null }, uDir: { value: new THREE.Vector2() } });
+  const compositeMat = passMat(compositeFrag, {
+    uScene: { value: null }, uBloom1: { value: null }, uBloom2: { value: null }, uBloom3: { value: null },
+    uBloom4: { value: null }, uBloom5: { value: null }, uTime: { value: 0 }, uExposure: { value: 1 },
+    uGlowA: { value: new THREE.Vector4() }, uGlowB: { value: new THREE.Vector4() }, uGrade: { value: new THREE.Vector2() }
+  });
+  function pass(mat, target) {
+    postMesh.material = mat;
+    renderer.setRenderTarget(target);
+    renderer.render(postScene, postCam);
+  }
+
+  let sceneRT = null, glare = [], glareTmp = [];
+  let quality = mobile ? 0.8 : 1.0;
+  let lastW = 0, lastH = 0, lastDpr = 0, bufW = 0, bufH = 0;
+  function freeTargets() {
+    if (sceneRT) sceneRT.dispose();
+    glare.concat(glareTmp).forEach(t => t.dispose());
+    sceneRT = null; glare = []; glareTmp = [];
+  }
+  function viewportSize() {
+    const w = canvas.clientWidth || window.innerWidth || 0;
+    const h = canvas.clientHeight || window.innerHeight || 0;
+    return [w, h, Math.min(window.devicePixelRatio || 1, 2)];
+  }
+  function sizeChanged() {
+    const vs = viewportSize();
+    return vs[0] !== lastW || vs[1] !== lastH || vs[2] !== lastDpr;
+  }
+  function resize() {
+    const vs = viewportSize();
+    const cw = vs[0], ch = vs[1], dpr = vs[2];
+    if (cw < 2 || ch < 2) return false;      // layout not ready (hidden tab); try again next frame
+    lastW = cw; lastH = ch; lastDpr = dpr;
+    let tw = Math.round(cw * dpr * quality), th = Math.round(ch * dpr * quality);
+    const cap = mobile ? 1100000 : 2400000;
+    if (tw * th > cap) { const s = Math.sqrt(cap / (tw * th)); tw = Math.round(tw * s); th = Math.round(th * s); }
+    bufW = Math.max(32, tw); bufH = Math.max(32, th);
+    renderer.setPixelRatio(1);
+    renderer.setSize(bufW, bufH, false);
+    freeTargets();
+    const opts = { type: texType, format: THREE.RGBAFormat, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false };
+    sceneRT = new THREE.WebGLRenderTarget(bufW, bufH, Object.assign({}, opts, { depthBuffer: true, samples: mobile ? 0 : 4 }));
+    for (let k = 2; k <= 6; k++) {
+      const gw = Math.max(1, bufW >> k), gh = Math.max(1, bufH >> k);
+      glare.push(new THREE.WebGLRenderTarget(gw, gh, opts));
+      glareTmp.push(new THREE.WebGLRenderTarget(gw, gh, opts));
+    }
+    viewport.set(bufW, bufH);
+    return true;
+  }
+
+  // ---- Moving around it ----
+  // The pointer nudges the view; a drag turns the camera around the hole.
+  // Left alone, the view drifts back to where it started.
+  const view = { az: 0, el: look.incl * deg, zoom: 1, taz: 0, tel: look.incl * deg, tzoom: 1 };
+  let mx = 0, my = 0, tmx = 0, tmy = 0, held = false, px = 0, py = 0, touched = -1e9, clock = 0;
+  let pending = 240;      // frames still to draw when the picture is otherwise still
+  canvas.addEventListener('pointerdown', e => {
+    held = true; px = e.clientX; py = e.clientY; pending = 240;
+    canvas.classList.add('is-held');
+    if (canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
+  });
+  const release = () => { held = false; touched = clock; canvas.classList.remove('is-held'); };
+  canvas.addEventListener('pointerup', release);
+  canvas.addEventListener('pointercancel', release);
+  window.addEventListener('pointermove', e => {
+    if (held) {
+      view.taz -= (e.clientX - px) * 0.005;
+      view.tel = Math.max(2.5 * deg, Math.min(80 * deg, view.tel + (e.clientY - py) * 0.005));
+      px = e.clientX; py = e.clientY;
+      touched = clock; pending = 240;
+    } else if (!coarse && !reduced) {
+      tmx = (e.clientX / window.innerWidth) * 2 - 1;
+      tmy = (e.clientY / window.innerHeight) * 2 - 1;
+    }
+  }, { passive: true });
+  window.addEventListener('pointerleave', () => { tmx = 0; tmy = 0; });
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    view.tzoom = Math.max(0.6, Math.min(3, view.tzoom * Math.exp(-e.deltaY * 0.0012)));
+    touched = clock; pending = 240;
+  }, { passive: false });
+  canvas.addEventListener('dblclick', () => { view.taz = 0; view.tel = look.incl * deg; view.tzoom = 1; pending = 240; });
+
+  renderer.info.autoReset = false;
   function render(t) {
+    clock = t;
+    renderer.info.reset();
+    const idle = !held && t - touched > 9;
+    if (idle) {
+      // Drift home, slowly.
+      view.taz += (0 - view.taz) * 0.012;
+      view.tel += (look.incl * deg - view.tel) * 0.012;
+      view.tzoom += (1 - view.tzoom) * 0.012;
+    }
+    view.az += (view.taz - view.az) * 0.12;
+    view.el += (view.tel - view.el) * 0.12;
+    view.zoom += (view.tzoom - view.zoom) * 0.12;
     mx += (tmx - mx) * 0.05;
     my += (tmy - my) * 0.05;
 
-    var sc = targets.scene;
-    var aspect = sc.w / sc.h;
-    var comp = composition(aspect);
-    var focal = comp.focal, centerX = comp.cx, centerFrac = comp.cy;
-    if (zoomDbg) { focal *= 3.5; centerFrac = 0.5; centerX = 0.5; }   // debug: magnify the shadow edge
+    const aspect = bufW / bufH;
+    const comp = composition(aspect);
+    const focal = comp.focal * view.zoom;
+    let incl = view.el + (reduced ? 0 : 0.4 * Math.sin(t * 0.05) * deg) - my * 1.2 * deg;
+    incl = Math.max(2.5 * deg, Math.min(82 * deg, incl));
+    const az = view.az + t * 0.0005 + mx * 2.0 * deg;
+    const cam = cameraBasis(incl, az, comp.roll);
+    camera.position.set(cam.cp[0], cam.cp[1], cam.cp[2]);
+    camera.up.set(cam.up[0], cam.up[1], cam.up[2]);
+    camera.lookAt(0, 0, 0);
+    camera.fov = 2 * Math.atan(1 / focal) / deg;
+    camera.aspect = aspect;
+    camera.setViewOffset(bufW, bufH, (0.5 - comp.cx) * bufW, (0.5 - comp.cy) * bufH, bufW, bufH);
+    camera.updateMatrixWorld(true);
+    camDir.set(cam.cp[0] / D, cam.cp[1] / D, cam.cp[2] / D);
 
-    var incl = (look.incl + 0.4 * Math.sin(t * 0.05) - my * 1.2) * deg;
-    if (incl < 2.5 * deg) incl = 2.5 * deg;
-    var az = t * DRIFT + mx * 2.0 * deg;
-    var cam = cameraBasis(incl, az, comp.roll);
-    var cp = cam.cp, fwd = cam.fwd, right = cam.right, up = cam.up;
-    if (skyOnly) { fwd = [-fwd[0], -fwd[1], -fwd[2]]; right = [-right[0], -right[1], -right[2]]; }   // debug: look away
+    const pxPerRad = 0.5 * focal * bufH;
+    const pos = planetAt(t);
+    planet.position.set(pos[0], pos[1], pos[2]);
+    planet.scale.setScalar(look.planetSize);
+    planetMat.uniforms.uPlanet.value.set(pos[0], pos[1], pos[2], look.planetSize);
+    planetMat.uniforms.uTime.value = t;
+    skyMat.uniforms.uFog.value.set(look.fog, look.fogR, look.halo, look.haloR);
+    skyMat.uniforms.uRing.value = look.ring;
+    skyMat.uniforms.uStars.value = look.stars;
+    skyMat.uniforms.uPxPerRad.value = pxPerRad;
+    strandMats.forEach(mat => {
+      mat.uniforms.uTime.value = t % 3600;
+      mat.uniforms.uAxis.value.set(Math.atan2(-camDir.z, -camDir.x), Math.abs(camDir.y), Math.sqrt(1 - camDir.y * camDir.y));
+      mat.uniforms.uPxPerRs.value = pxPerRad * sinPerB;
+      mat.uniforms.uStrand.value.set(look.spin, look.pitch, look.minHalf, look.gain * strandCount / strands.instanceCount);
+      mat.uniforms.uShift.value.set(look.doppler, look.dopplerT, look.sat);
+    });
 
-    // Temporal accumulation: a running mean while nothing moves, an
-    // exponential one otherwise; camera motion shortens the history.
-    var motion = dist(fwd, prevFwd) + dist(up, prevUp);
-    prevFwd = fwd; prevUp = up;
-    var alpha = histValid ? Math.min(0.9, Math.max(1 / (accum + 1), reduced ? 0 : 0.15) + motion * 900) : 1.0;
-    var jit = jitters[frameIndex % jitters.length];
+    // 1. The scene, in linear light.
+    renderer.setRenderTarget(sceneRT);
+    renderer.render(scene, camera);
 
-    // 0. Disk material for this instant, with mipmaps.
-    gl.useProgram(disk.p);
-    bindTarget(diskTex);
-    gl.uniform2f(disk.u.uSize, diskTex.w, diskTex.h);
-    gl.uniform1f(disk.u.uTime, t);
-    gl.uniform4f(disk.u.uTexA, look.texBroad, look.texMid, look.texFine, look.texThreads);
-    gl.uniform4f(disk.u.uTexB, look.pitch, look.texCloud, look.texClump, look.texSpeck);
-    draw();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, diskTex.tex);
-    gl.generateMipmap(gl.TEXTURE_2D);
-
-    // 1. Geodesic trace into the HDR scene target.
-    var pxPerRad = 0.5 * focal * sc.h;
-    var planetPos = planetAt(t);
-    gl.useProgram(trace.p);
-    bindTarget(sc);
-    gl.uniform2f(trace.u.uRes, sc.w, sc.h);
-    gl.uniform2f(trace.u.uJitter, jit[0], jit[1]);
-    gl.uniform1f(trace.u.uTime, t);
-    gl.uniform3f(trace.u.uCamPos, cp[0], cp[1], cp[2]);
-    gl.uniform3f(trace.u.uCamRight, right[0], right[1], right[2]);
-    gl.uniform3f(trace.u.uCamUp, up[0], up[1], up[2]);
-    gl.uniform3f(trace.u.uCamFwd, fwd[0], fwd[1], fwd[2]);
-    gl.uniform1f(trace.u.uFocal, focal);
-    gl.uniform2f(trace.u.uCenter, centerX * 2 - 1, (1 - centerFrac) * 2 - 1);
-    gl.uniform1f(trace.u.uEnc, encMode);
-    gl.uniform1i(trace.u.uMaxSteps, maxSteps);
-    gl.uniform1f(trace.u.uPxPerRad, pxPerRad);
-    // In impact parameter (the shadow edge is at 2.598): from two pixels
-    // inside the edge, the photon ring itself, then the band next to it.
-    var pxB = look.dist / pxPerRad;
-    gl.uniform3f(trace.u.uRingBand, 2.598 - 1.5 * pxB, 2.598 + Math.max(0.06, 3.0 * pxB), 2.598 + 0.25);
-    gl.uniform2f(trace.u.uDiskSize, diskTex.w, diskTex.h);
-    gl.uniform4f(trace.u.uGas, look.gain, look.falloff, look.tau, look.haze);
-    gl.uniform4f(trace.u.uGasT, look.tPeak, look.tSlope, look.sat, look.glowFall);
-    gl.uniform4f(trace.u.uDust, look.dustTau, look.dust0, look.dust1, look.dustEdge);
-    gl.uniform4f(trace.u.uDustL, look.dustGain, look.dustHalf, look.dustFall, look.dustTex);
-    gl.uniform4f(trace.u.uDustT, look.dustFloor, look.dustT, look.dustSat, look.soft);
-    gl.uniform4f(trace.u.uDustS, look.relief, look.shade, look.dustStreak, look.dustThin);
-    gl.uniform2f(trace.u.uStrand, look.strand, look.tint);
-    gl.uniform3f(trace.u.uShift, look.doppler, look.dopplerT, look.gasEnd);
-    // The dust bank keeps its place in the picture: it is set from the camera.
-    var bankAz = Math.atan2(cp[2], cp[0]) + (90 + look.bankDir) * deg;
-    gl.uniform4f(trace.u.uBank, Math.cos(bankAz), Math.sin(bankAz), look.bankLo, look.dustBack);
-    gl.uniform4f(trace.u.uFog, look.fog, look.fogR, look.halo, look.haloR);
-    gl.uniform1f(trace.u.uStars, look.stars);
-    gl.uniform1f(trace.u.uEinstein, Math.sqrt(2 / look.dist));
-    gl.uniform4f(trace.u.uPlanet, planetPos[0], planetPos[1], planetPos[2], look.planetSize);
-    gl.uniform3f(trace.u.uGalaxy, galaxyDir[0], galaxyDir[1], galaxyDir[2]);
-    gl.uniform3f(trace.u.uMwNormal, mwNormal[0], mwNormal[1], mwNormal[2]);
-    gl.uniform3f(trace.u.uMwCentre, mwCentre[0], mwCentre[1], mwCentre[2]);
-    bindTex(trace.u.uDisk, diskTex.tex, 0);
-    draw();
-
-    // 2. Temporal accumulation (anti-aliasing).
-    var cur = targets.hist[histIndex];
-    var next = targets.hist[1 - histIndex];
-    // Screen guard for the resolve so the moving planet leaves no ghost trail.
-    // Lensing pushes its image outward from the hole, so the guard covers the
-    // stretch from its straight-line position out to 1.8 times as far.
-    function toUv(P) {
-      var rl = [P[0] - cp[0], P[1] - cp[1], P[2] - cp[2]];
-      var dp = dot(rl, fwd);
-      if (dp <= 0.1) return null;
-      return [(focal * dot(rl, right) / (dp * aspect) + centerX * 2) / 2, (focal * dot(rl, up) / dp + (1 - centerFrac) * 2) / 2];
-    }
-    var pUv = toUv(planetPos), hUv = toUv([0, 0, 0]);
-    var guard = [0, 0, 0, 0], guardR = 0;
-    if (pUv && hUv) {
-      guard = [hUv[0] + (pUv[0] - hUv[0]) * 0.9, hUv[1] + (pUv[1] - hUv[1]) * 0.9,
-               hUv[0] + (pUv[0] - hUv[0]) * 1.8, hUv[1] + (pUv[1] - hUv[1]) * 1.8];
-      guardR = Math.max(4 * look.planetSize / dist(planetPos, cp) * pxPerRad, 14) / sc.h;
-    }
-    gl.useProgram(resolve.p);
-    bindTarget(next);
-    gl.uniform1f(resolve.u.uAlpha, alpha);
-    gl.uniform1f(resolve.u.uEnc, encMode);
-    gl.uniform2f(resolve.u.uTexel, 1 / sc.w, 1 / sc.h);
-    gl.uniform1f(resolve.u.uAspect, aspect);
-    gl.uniform4f(resolve.u.uGuard, guard[0], guard[1], guard[2], guard[3]);
-    gl.uniform1f(resolve.u.uGuardR, guardR);
-    gl.uniform1f(resolve.u.uSeed, (frameIndex * 0.61803) % 1);
-    bindTex(resolve.u.uCur, sc.tex, 0);
-    bindTex(resolve.u.uHist, cur.tex, 1);
-    draw();
-    histIndex = 1 - histIndex;
-    histValid = true;
-    frameIndex++;
-    accum++;
-
-    // 3. Glare: the scene blurred into five halos, each about twice as wide
+    // 2. Glare: the scene blurred into five halos, each about twice as wide
     // as the one before. Their width follows the size of the hole.
-    var from = next;
-    for (var k = 0; k < 5; k++) {
-      var stride = Math.max(0.3, Math.min(2.2, (k < 4 ? 1.0 : 1.6) * comp.hole * sc.h / 423));
-      downsample(from, targets.glare[k]);
-      blurPass(targets.glare[k], targets.glareTmp[k], stride);
-      blurPass(targets.glare[k], targets.glareTmp[k], stride);
-      from = targets.glare[k];
+    let from = sceneRT;
+    const hole = comp.focal * tanShadow * view.zoom;
+    for (let k = 0; k < 5; k++) {
+      const stride = Math.max(0.3, Math.min(2.2, (k < 4 ? 1.0 : 1.6) * hole * bufH / 423));
+      downMat.uniforms.uTex.value = from.texture;
+      downMat.uniforms.uTexel.value.set(1 / from.width, 1 / from.height);
+      pass(downMat, glare[k]);
+      for (let n = 0; n < 2; n++) {
+        blurMat.uniforms.uTex.value = glare[k].texture;
+        blurMat.uniforms.uDir.value.set(stride / glare[k].width, 0);
+        pass(blurMat, glareTmp[k]);
+        blurMat.uniforms.uTex.value = glareTmp[k].texture;
+        blurMat.uniforms.uDir.value.set(0, stride / glare[k].height);
+        pass(blurMat, glare[k]);
+      }
+      from = glare[k];
     }
 
-    // 4. Composite: glare, film response, vignette, grain.
-    gl.useProgram(composite.p);
-    bindTarget(null);
-    gl.uniform1f(composite.u.uTime, t);
-    gl.uniform1f(composite.u.uEnc, encMode);
-    gl.uniform1f(composite.u.uExposure, look.exposure);
-    gl.uniform4f(composite.u.uGlowA, look.glow1, look.glow2, look.glow3, look.glow4);
-    gl.uniform4f(composite.u.uGlowB, look.glow5, look.white, look.knee, 0);
-    gl.uniform2f(composite.u.uGrade, look.vignette, look.grain);
-    gl.uniform2f(composite.u.uTexel, 1 / next.w, 1 / next.h);
-    bindTex(composite.u.uScene, next.tex, 0);
-    bindTex(composite.u.uBloom1, targets.glare[0].tex, 1);
-    bindTex(composite.u.uBloom2, targets.glare[1].tex, 2);
-    bindTex(composite.u.uBloom3, targets.glare[2].tex, 3);
-    bindTex(composite.u.uBloom4, targets.glare[3].tex, 4);
-    bindTex(composite.u.uBloom5, targets.glare[4].tex, 5);
-    draw();
+    // 3. Camera response.
+    const cu = compositeMat.uniforms;
+    cu.uScene.value = sceneRT.texture;
+    cu.uBloom1.value = glare[0].texture; cu.uBloom2.value = glare[1].texture; cu.uBloom3.value = glare[2].texture;
+    cu.uBloom4.value = glare[3].texture; cu.uBloom5.value = glare[4].texture;
+    cu.uTime.value = t % 3600;
+    cu.uExposure.value = look.exposure;
+    cu.uGlowA.value.set(look.glow1, look.glow2, look.glow3, look.glow4);
+    cu.uGlowB.value.set(look.glow5, look.white, look.knee, 0);
+    cu.uGrade.value.set(look.vignette, look.grain);
+    pass(compositeMat, null);
   }
 
-  // ---- Loop: 60 fps cap, adaptive resolution, static mode ----
-  var STATIC_FRAMES = 16;
-  var staticFramesLeft = STATIC_FRAMES;
-  var t0 = performance.now();
-  var last = 0, lastDraw = 0, frameAvg = 16, frames = 0;
-  var lost = false, shown = false;
-
-  function reveal() {
-    if (shown) return;
-    shown = true;
-    root.classList.add('is-live');
-  }
-
+  // ---- Loop: at most about 80 frames a second, lighter picture on slow machines ----
+  const t0 = performance.now();
+  let last = 0, lastDraw = 0, shown = false, lost = false;
+  let gaps = [], tuned = 0, quickRuns = 0, limit = strandCount, slowed = false, pace = 0, trial = null, strandsHelp = true;
   function frame(now) {
     if (lost) return;
     requestAnimationFrame(frame);
-    if (!targets || sizeChanged()) {
+    if (!sceneRT || sizeChanged()) {
       if (!resize()) return;
       last = 0;
+      pending = 240;
     }
     if (reduced) {
-      // A converged still frame; re-rendered only when the viewport changes.
-      if (staticFramesLeft > 0) { render(0); staticFramesLeft--; reveal(); }
+      // A still picture: drawn again only while the view is being moved.
+      if (pending > 0) { pending--; render(0); if (!shown) { shown = true; root.classList.add('is-live'); } }
       return;
     }
-    if (now - lastDraw < 15) return;
-    if (last && now - last < 100) frameAvg = frameAvg * 0.9 + (now - last) * 0.1;
+    if (now - lastDraw < 12) return;
+    if (last) gaps.push(now - last);
     last = now;
     lastDraw = now;
-    frames++;
-    if (frames > 90 && frames % 30 === 0 && frameAvg > 30 && quality > 0.35) {
-      quality = Math.max(0.35, quality - 0.12);
-      resize();
-      frameAvg = 16;
+    // Fit the picture to the machine. Every 0.6 s the usual time between
+    // frames is taken (the median, so one hitch does not count) and compared
+    // with the pace of the screen. At that pace, more strands are drawn.
+    // Well behind it, fewer strands (each one brighter), and in the end
+    // fewer pixels; a count that proved too much is not tried again.
+    if (!tuned) tuned = now + 500;         // let the first frames settle
+    if (now - tuned > 600 && gaps.length > 5) {
+      const typical = gaps.sort((a, b) => a - b)[gaps.length >> 1];
+      gaps = [];
+      tuned = now;
+      if (typical > 250) {
+        // A few frames a second on a real graphics chip: the browser is
+        // holding a page back that nobody is looking at. Change nothing.
+        trial = null;
+      } else if (trial) {
+        // Did drawing fewer strands help? If not, and frames still come at
+        // a fair rate, the browser itself holds that rate (a power-saving
+        // mode, a slow screen): take it as the pace and give the strands
+        // back. If frames are slow all the same, it is the pixels that cost.
+        if (typical > 0.9 * trial.typical) {
+          if (typical <= 60) {
+            strands.instanceCount = trial.count;
+            limit = trial.limit;
+            slowed = trial.slowed;
+            pace = typical;
+          } else {
+            strandsHelp = false;
+          }
+        }
+        trial = null;
+      } else {
+        if (!pace && typical < 24) pace = typical;
+        const full = pace || 19;
+        if (typical > 1.5 * full && typical > 26) {
+          quickRuns = 0;
+          if (strandsHelp && strands.instanceCount > strandCount * 0.2) {
+            trial = { count: strands.instanceCount, limit, slowed, typical };
+            limit = Math.min(limit, Math.round(strands.instanceCount * 0.92));
+            strands.instanceCount = Math.round(strands.instanceCount * 0.6);
+          } else if (quality > 0.45) {
+            quality = Math.max(0.45, quality - 0.12);
+            resize();
+          }
+          slowed = true;
+        } else if (typical < 1.25 * full && strands.instanceCount < limit && ++quickRuns >= (slowed ? 5 : 1)) {
+          quickRuns = 0;
+          strands.instanceCount = Math.min(limit, Math.round(strands.instanceCount * 1.3));
+        }
+      }
     }
     render((now - t0) / 1000);
-    reveal();
+    if (!shown) { shown = true; root.classList.add('is-live'); }
   }
-
-  document.addEventListener('visibilitychange', function () { last = 0; });
-  canvas.addEventListener('webglcontextlost', function (e) {
-    e.preventDefault();
-    lost = true;
-    fail('WebGL context lost');
-  });
-
+  document.addEventListener('visibilitychange', () => { last = 0; gaps = []; trial = null; });
+  canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); lost = true; fail('WebGL context lost'); });
   requestAnimationFrame(frame);
 
   if (debug) {
-    window.__bh = { gl: gl, targets: function () { return targets; }, disk: function () { return diskTex; }, render: render, hdr: hdr, isGL2: isGL2, quality: function () { return quality; }, look: look };
+    window.__bh = {
+      // A frame drawn through this hook is always the full picture.
+      gl, hdr, isGL2: true, look, quality: () => quality,
+      render: t => { strands.instanceCount = strandCount; render(t); },
+      // Raw framebuffers, for the render check.
+      targets: () => {
+        const raw = t => { const p = renderer.properties.get(t); return { fb: p.__webglFramebuffer, ok: !!p.__webglFramebuffer }; };
+        return { scene: raw(sceneRT), glare: glare.map(raw), glareTmp: glareTmp.map(raw) };
+      },
+      info: () => ({ triangles: renderer.info.render.triangles, calls: renderer.info.render.calls, strands: strands.instanceCount, pace, limit, quality })
+    };
   }
-})();
+}
+
+try {
+  start();
+} catch (e) {
+  fail(e && e.message ? e.message : 'failed to start');
+}
   </script>
 </body>
 </html>
