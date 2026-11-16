@@ -5,15 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
   <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#070a10">
-  <meta name="description" content="Gargantua — a black hole built from strands of light, rendered live in the browser.">
-  <title>Gargantua · Zipeng</title>
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23070a10'/%3E%3Ccircle cx='17' cy='15' r='7' fill='none' stroke='%23e4e4ec' stroke-width='1.6'/%3E%3Cpath d='M3 22L30 11' stroke='%23d8c4ae' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E">
+  <meta name="theme-color" content="#0a1416">
+  <meta name="description" content="A black hole in a storm of glowing gas, rendered live in the browser.">
+  <title>Black Hole · Zipeng</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230a1416'/%3E%3Ccircle cx='17' cy='15' r='7' fill='none' stroke='%23ffe6bd' stroke-width='1.6'/%3E%3Cpath d='M3 22L30 11' stroke='%23f2a468' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E">
   <style>
     :root {
       color-scheme: dark;
-      --void: #070a10;
-      --ink: 236, 238, 246;
+      --void: #0a1416;
+      --ink: 248, 240, 226;
       /* Apparent radius of the shadow; the fallback is drawn in these units. */
       --rs: min(23.5vh, 25vw);
     }
@@ -71,13 +71,21 @@
     }
 
     .fallback-scene {
+      --roll: -21deg;
       position: absolute;
       left: 74.5%;
       top: 42%;
       width: calc(var(--rs) * 13);
       height: calc(var(--rs) * 13);
       margin: calc(var(--rs) * -6.5) 0 0 calc(var(--rs) * -6.5);
-      transform: rotate(-21deg);
+      transform: rotate(var(--roll));
+      transition: transform 1.5s cubic-bezier(0.55, 0, 0.9, 0.45), opacity 1.5s cubic-bezier(0.55, 0, 0.9, 0.45);
+    }
+
+    /* Falling in, without WebGL: the still turns and swells into the dark. */
+    .is-falling .fallback-scene {
+      transform: rotate(calc(var(--roll) - 80deg)) scale(7);
+      opacity: 0;
     }
 
     .fallback-scene::before {
@@ -85,10 +93,10 @@
       position: absolute;
       inset: 0;
       background: radial-gradient(circle closest-side,
-        rgba(96, 110, 150, 0.55) 0,
-        rgba(60, 74, 110, 0.32) 28%,
-        rgba(30, 40, 66, 0.14) 52%,
-        rgba(10, 14, 24, 0) 80%);
+        rgba(132, 156, 158, 0.55) 0,
+        rgba(74, 104, 108, 0.32) 28%,
+        rgba(32, 54, 58, 0.14) 52%,
+        rgba(10, 20, 22, 0) 80%);
     }
 
     .fallback-arc,
@@ -104,13 +112,13 @@
       height: calc(var(--rs) * 4.4);
       border-radius: 50%;
       background: radial-gradient(circle closest-side,
-        #9395aa 0, #a3a5b9 40%,
-        #e6e6ec 45.2%,
-        #babbcb 47%,
-        #dedee6 50%, #dedee6 66%,
-        rgba(190, 188, 202, 0.72) 72%,
-        rgba(128, 132, 158, 0.34) 82%,
-        rgba(70, 80, 112, 0) 100%);
+        #a3b3b8 0, #b4c0c2 40%,
+        #fff0d2 45.2%,
+        #d9cdb6 47%,
+        #ffeccb 50%, #ffe8c4 62%,
+        rgba(246, 184, 138, 0.86) 70%,
+        rgba(206, 112, 66, 0.42) 82%,
+        rgba(96, 48, 30, 0) 100%);
     }
 
     .fallback-blade {
@@ -118,11 +126,11 @@
       width: 100%;
       height: calc(var(--rs) * 0.62);
       background: linear-gradient(90deg,
-        rgba(60, 44, 30, 0) 16%,
-        rgba(118, 92, 68, 0.75) 26%,
-        #b29a82 32%,
-        #dcd6d2 37%,
-        #e0e0e8 42%, #e0e0e8 100%);
+        rgba(70, 36, 22, 0) 12%,
+        rgba(150, 74, 40, 0.75) 23%,
+        #e08f5a 30%,
+        #ffd9aa 36%,
+        #ffeccb 42%, #ffeccb 100%);
       -webkit-mask-image: linear-gradient(rgba(0, 0, 0, 0), #000 36%, #000 64%, rgba(0, 0, 0, 0));
       mask-image: linear-gradient(rgba(0, 0, 0, 0), #000 36%, #000 64%, rgba(0, 0, 0, 0));
     }
@@ -170,15 +178,66 @@
       to { opacity: 1; transform: none; }
     }
 
+    /* The shadow of the hole is the way into the blog. The script keeps this
+       circle on the shadow; without it, it sits on the hole of the still. */
+    .portal {
+      --x: 74.5%;
+      --y: 42%;
+      --r: var(--rs);
+      position: fixed;
+      left: var(--x);
+      top: var(--y);
+      z-index: 1;
+      width: calc(var(--r) * 2);
+      height: calc(var(--r) * 2);
+      margin: calc(var(--r) * -1) 0 0 calc(var(--r) * -1);
+      border-radius: 50%;
+      cursor: pointer;
+      outline: none;
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .portal:focus-visible {
+      box-shadow: 0 0 0 1px rgba(var(--ink), 0.5), 0 0 28px rgba(var(--ink), 0.22);
+    }
+
+    .is-falling .portal,
+    .is-falling #gargantua {
+      pointer-events: none;
+    }
+
+    .is-falling .caption {
+      animation: caption-out 0.7s ease-in both;
+    }
+
+    @keyframes caption-out {
+      to { opacity: 0; transform: translateY(6px); }
+    }
+
+    /* With reduced motion there is no fall: the page fades out. */
+    .is-leaving body {
+      opacity: 0;
+      transition: opacity 0.35s ease-in;
+    }
+
     @media (max-width: 760px) {
       .caption-title {
         letter-spacing: 0.28em;
       }
 
       .fallback-scene {
+        --roll: -34deg;
         left: 60%;
         top: 36%;
-        transform: rotate(-34deg);
+      }
+
+      .portal {
+        --x: 60%;
+        --y: 36%;
       }
     }
 
@@ -207,9 +266,10 @@
   <div class="fallback" aria-hidden="true">
     <div class="fallback-scene"><i class="fallback-arc"></i><i class="fallback-blade"></i></div>
   </div>
+  <a class="portal" href="/blog/" aria-label="Enter the blog"></a>
 
   <main class="caption">
-    <h1 class="caption-title">Gargantua</h1>
+    <h1 class="caption-title">Black Hole</h1>
     <p class="caption-line">Light bends. Time slows. Nothing escapes.</p>
   </main>
 
@@ -217,6 +277,9 @@
     // If the library cannot be loaded, or the page has no WebGL 2, show the still.
     window.__gargantuaFail = function (msg) {
       document.documentElement.classList.add('no-webgl');
+      // The way in goes back to where the still has its hole.
+      var portal = document.querySelector('.portal');
+      if (portal) portal.removeAttribute('style');
       if (window.console && msg) console.warn('[gargantua] ' + msg);
     };
     window.addEventListener('error', function (e) {
@@ -227,17 +290,17 @@
   <script type="module">
 import * as THREE from 'three';
 
-// The disk is not a picture on a plane. It is tens of thousands of strands of
-// light, each a short piece of an orbit around the hole, placed in space with
-// a little height above or below the plane and turning at its own speed. The
-// strands only add light, so the disk is sheer where they are few and burns
-// out to white where they are many.
+// The disk is not a picture on a plane. It is gas in space: two thin sheets
+// of glowing fibres, one a little above the plane of the disk and one a
+// little below, rippled and bent, inside a thick veil of thinner gas. The
+// gas turns in lanes, each at the speed of its own radius.
 //
-// Gravity is applied to the geometry itself. For every point of every strand
-// the vertex shader looks up where the hole makes that point appear, and
-// draws it there. A second pass draws the image whose light went round the
-// far side of the hole. The table behind this is exact: it is built once, on
-// load, from the paths of a few thousand rays.
+// Every pixel follows its line of sight around the hole, along a path that
+// is looked up in a table built once, on load, from the paths of a few
+// thousand rays. Where the line meets a sheet, the gas there takes its share
+// of the light from behind and adds its own. So the disk is sheer where the
+// gas is thin, a wall of light where it is deep, and the far side shows
+// through the near side.
 
 const canvas = document.getElementById('gargantua');
 const root = document.documentElement;
@@ -250,6 +313,75 @@ const debug = /[?&]debug=1/.test(search);
 const deg = Math.PI / 180;
 const fail = window.__gargantuaFail;
 
+// ---- The way in ----
+// The shadow of the hole is a link to the blog. To follow it is to fall in:
+// the camera turns to the hole and is drawn into it, space twists and closes
+// in around it, and the blog opens out of the dark on the other side.
+// Without WebGL the still swells into the dark; with reduced motion the
+// page only fades.
+const portal = document.querySelector('.portal');
+const FALL = 2.6;         // seconds from the tap to darkness
+let fallAt = 0;           // when the fall began (performance.now()); 0 while there is none
+let glFall = null;        // the drawn fall, once the picture is live
+let gone = false, prepared = null, backstop = 0;
+const drawn = () => !!glFall && !root.classList.contains('no-webgl');
+// Load the blog while the fall is under way: drawn in advance where the
+// browser can, else at least fetched.
+function prepare() {
+  if (prepared) return;
+  try {
+    if (HTMLScriptElement.supports && HTMLScriptElement.supports('speculationrules')) {
+      prepared = document.createElement('script');
+      prepared.type = 'speculationrules';
+      prepared.textContent = JSON.stringify({ prerender: [{ source: 'list', urls: [portal.href] }] });
+    }
+  } catch (e) {}
+  if (!prepared) {
+    prepared = document.createElement('link');
+    prepared.rel = 'prefetch';
+    prepared.href = portal.href;
+  }
+  document.head.appendChild(prepared);
+}
+function leave() {
+  if (gone) return;
+  gone = true;
+  clearTimeout(backstop);
+  // Tells the blog to open out of the dark.
+  try { sessionStorage.setItem('bh-fall', String(Date.now())); } catch (e) {}
+  window.location.assign(portal.href);
+}
+function enter() {
+  if (fallAt) return;
+  fallAt = performance.now();
+  prepare();
+  if (reduced) {
+    root.classList.add('is-leaving');
+    backstop = setTimeout(leave, 350);
+    return;
+  }
+  root.classList.add('is-falling');
+  // The drawn fall leaves by itself once it is dark; this is in case the
+  // frames stop coming.
+  backstop = setTimeout(leave, drawn() ? FALL * 1000 + 1500 : 1500);
+}
+portal.addEventListener('click', e => {
+  if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;   // a new tab or window: as any link
+  e.preventDefault();
+  // A tap on the live picture is told from a drag when the pointer is let go.
+  if (e.detail === 0 || !drawn()) enter();
+});
+// Back from the blog to a page kept in memory: start again.
+window.addEventListener('pageshow', e => {
+  if (!e.persisted) return;
+  clearTimeout(backstop);
+  fallAt = 0;
+  gone = false;
+  root.classList.remove('is-falling', 'is-leaving');
+  if (prepared) { prepared.remove(); prepared = null; }
+  if (glFall) glFall.reset();
+});
+
 // ---- The look: every number that shapes the picture ----
 const look = {
   // Camera: distance (rs), height above the disk plane (degrees), roll of
@@ -258,32 +390,42 @@ const look = {
   // is a share of the width.
   dist: 60, incl: 7.2, roll: -21, cx: 0.745, cy: 0.42, hole: 0.47,
   rollTall: -34, cxTall: 0.60, cyTall: 0.36, holeTall: 0.50,
-  // Strands: how many, and how many pieces each is drawn in; inner and outer
-  // radius; how fast their number falls with radius; the radius the
-  // brightness profile starts from, its strength, how fast it falls.
-  count: mobile ? 26000 : 80000, pieces: mobile ? 20 : 32,
-  rIn: 1.9, rOut: 12, crowd: 1.5, fluxIn: 1.8, gain: 2.5, fall: 2.2,
-  // Width of a strand (rs), spread of their brightness, half-thickness of
-  // the disk (rs) and how much it grows with radius, share of strands
-  // lofted well above it.
-  width: 0.02, spread: 0.9, thick: 0.14, flare: 0.004, loft: 0.05,
-  // Colour: temperature at radius 3 (K), how fast it cools outward, spread
-  // between strands, saturation.
-  tIn: 7000, tSlope: 0.5, tSpread: 0.12, sat: 0.6,
-  // Motion: orbital speed, spiral pitch. Least half-width of a drawn strand
-  // in pixels. Doppler shift in brightness and in colour.
-  spin: 1.25, pitch: 0.02, minHalf: 0.7, doppler: 0.12, dopplerT: 0.5,
+  // Gas, the body of the disk: inner and outer radius; brightness of its
+  // surface at radius 3 and how fast that falls outward; depth of the gas
+  // seen from straight above at radius 3, and how fast it thins outward.
+  gasIn: 1.9, gasOut: 10.5, gasLight: 7, gasFall: 2.6, gasDepth: 0.6, gasThin: 1.6,
+  // Its two sheets: height above and below the plane (rs), growth of that
+  // with radius, size of the ripples; contrast of the fibres and of the
+  // clouds. Temperature at radius 3 (K), cooling outward, extra heat of the
+  // bright fibres.
+  gasLift: 0.03, gasFlare: 0.006, gasWave: 1.0, fibre: 2.8, cloud: 2.2,
+  gasT: 5200, gasCool: 0.85, gasHot: 0.35,
+  // The veil of thin gas around the sheets: depth, brightness against the
+  // sheets, thickness (rs). Thinner gas and dust beyond the bright disk:
+  // depth of a clump, radius where it starts, brightness of its glow, light
+  // it stops; the most slant at which it is seen to glow, how fast its
+  // light falls off beyond the outer radius times emberFar.
+  haze: 0.05, hazeLight: 0.5, hazeH: 0.22, dust: 0.5, dustIn: 6.0, dustLight: 0.102, dustDark: 0.2,
+  emberSlant: 3, emberFall: 4, emberFar: 1.0,
+  // Motion: orbital speed. Doppler shift in brightness and in colour.
+  spin: 1.25, doppler: 0.12, dopplerT: 0.5,
   // Thin glowing gas around the hole: brightness and radius of a dense core,
   // then of a wide halo; brightness of the photon ring.
-  fog: 0.2, fogR: 2.8, halo: 0.03, haloR: 5.5, ring: 0.6,
+  fog: 0.03, fogR: 2.8, halo: 0.015, haloR: 5.5, ring: 1.6,
   // Camera response: exposure, share of the light in each of five halos
-  // (tightest first), white level, sharpness of the shoulder, vignette,
-  // grain.
-  exposure: 1.0, glow1: 0.10, glow2: 0.10, glow3: 0.07, glow4: 0.05, glow5: 0.03,
-  white: 0.74, knee: 3.5, vignette: 0.5, grain: 1.2,
+  // (tightest first), white level, sharpness of the shoulder, brightness at
+  // which a colour is half burnt out to white, vignette, grain.
+  exposure: 1.55, glow1: 0.06, glow2: 0.08, glow3: 0.10, glow4: 0.07, glow5: 0.08,
+  white: 1.0, knee: 3.5, burn: 2.5, vignette: 0.5, grain: 1.2,
   // Stars. Planet: orbit radius, tilt, where the orbit crosses the disk
   // plane, where the planet starts on it, size.
-  stars: 5, planetR: 6.2, planetInc: 30, planetNode: 140, planetPhase: 45, planetSize: 0.14
+  stars: 5, planetR: 6.2, planetInc: 30, planetNode: 140, planetPhase: 45, planetSize: 0.14,
+  // Falling in, the way into the blog: how much nearer the hole comes;
+  // twist of space at the edge of the dark (radians) and how fast it falls
+  // off outward; length of the streaks; how much the sky outside the dark
+  // is squeezed; width of the glow inside its edge, as a share of its radius;
+  // how much the exposure is taken down, so the gas keeps its texture.
+  fallNear: 1.3, fallTwist: 4, fallTwistOut: 1.0, fallStreak: 0.25, fallSqueeze: 1, fallRim: 0.12, fallDim: 0.35
 };
 if (debug) {
   const lm = /[?&]look=([^&]+)/.exec(search);
@@ -305,6 +447,16 @@ const LUT_W = 768, LUT_H = 96;          // angle x radius
 const PSI_MAX = 3 * Math.PI;
 const R_MIN = 1.55, R_MAX = 24;
 const SKY_W = 512, SKY_L0 = Math.log(1e-5), SKY_L1 = Math.log(38);
+// The ray table: impact parameter x angle. Its columns crowd around the
+// critical impact parameter, where a ray is most sensitive.
+const RAY_W = 512, RAY_H = 384, RAY_PSI = 2.3 * Math.PI;
+const RAY_B = 24, RAY_EPS = 0.002, RAY_X0 = 0.3;
+const RAY_LA = Math.log(1 + (RAY_B - B_CRIT) / RAY_EPS), RAY_LB = Math.log(1 + B_CRIT / RAY_EPS);
+// The gas texture: one turn of the disk wide, 1 / GAS_VS e-folds of radius
+// tall. GAS_PT is how many tiles a fibre climbs in one turn (it trails).
+// The gas turns in lanes, LANE e-folds of radius wide.
+const GAS_W = 512, GAS_H = 512, GAS_VS = 1.3, GAS_PT = 1;
+const LANE = 0.085, LANE_S0 = 0.45, GAS_DRIFT = 6 / 3600;
 
 // Follows the ray with impact parameter `b` from the camera. Calls
 // onCross(j, psi, outgoing) each time it crosses radius rj[j], and returns
@@ -432,7 +584,45 @@ function buildSky() {
   return tex;
 }
 
-// ---- Strands ----
+// The ray table. For the line of sight with impact parameter b it gives
+// u = 1/r at the angle psi it has swept around the hole, and how fast u
+// changes with psi. The gas is drawn with it: it tells where a line of
+// sight meets the disk, and at what slant.
+function buildRays() {
+  const data = new Float32Array(RAY_W * RAY_H * 2);
+  const sub = 8, h = RAY_PSI / ((RAY_H - 1) * sub);
+  for (let i = 0; i < RAY_W; i++) {
+    const x = i / (RAY_W - 1);
+    const b = Math.max(x >= RAY_X0
+      ? B_CRIT + RAY_EPS * (Math.exp((x - RAY_X0) / (1 - RAY_X0) * RAY_LA) - 1)
+      : B_CRIT - RAY_EPS * (Math.exp((RAY_X0 - x) / RAY_X0 * RAY_LB) - 1), 1e-3);
+    let u = 1 / D, v = Math.sqrt(Math.max(1 / (b * b) - u * u * (1 - u), 0)), done = false;
+    for (let j = 0; j < RAY_H; j++) {
+      // Stored times b: for a line of sight aimed almost at the hole u goes
+      // as 1/b, and the product is what changes evenly between columns.
+      const o = (j * RAY_W + i) * 2;
+      data[o] = u * b; data[o + 1] = v * b;
+      for (let n = 0; n < sub && !done; n++) {
+        const k1 = 1.5 * u * u - u;
+        const u2 = u + 0.5 * h * v, v2 = v + 0.5 * h * k1;
+        const k2 = 1.5 * u2 * u2 - u2;
+        const u3 = u + 0.5 * h * v2, v3 = v + 0.5 * h * k2;
+        const k3 = 1.5 * u3 * u3 - u3;
+        const u4 = u + h * v3, v4 = v + h * k3;
+        const k4 = 1.5 * u4 * u4 - u4;
+        u += h / 6 * (v + 2 * v2 + 2 * v3 + v4);
+        v += h / 6 * (k1 + 2 * k2 + 2 * k3 + k4);
+        // Past the horizon, or gone back out to the far sky: the ray is over.
+        if (u > 3) { u = 3; v = 0; done = true; }
+        if (u < -0.05) { u = -0.05; v = 0; done = true; }
+      }
+    }
+  }
+  const tex = new THREE.DataTexture(data, RAY_W, RAY_H, THREE.RGFormat, THREE.FloatType);
+  tex.needsUpdate = true;
+  return tex;
+}
+
 function mulberry(seed) {
   let a = seed >>> 0;
   return () => {
@@ -444,54 +634,75 @@ function mulberry(seed) {
   };
 }
 
-// Brightness of the disk seen from straight above, against radius: zero at
-// its inner edge, a peak just outside it, then a steep fall. Peak of 1.
-function profile(r) {
-  const x = r / look.fluxIn;
-  return Math.pow(Math.max(1 - 1 / Math.sqrt(x), 0) / (x * x * x) * 17.65, look.fall);
-}
-
-function buildStrands(N, S) {
-  const base = new Float32Array((S + 1) * 2 * 3);
-  for (let k = 0; k <= S; k++) {
-    for (let e = 0; e < 2; e++) {
-      const o = (k * 2 + e) * 3;
-      base[o] = k / S; base[o + 1] = e ? 1 : -1; base[o + 2] = 0;
+// The gas texture. Red and green: long fibres, for the two sheets of the
+// disk. Blue: short tufts. Alpha: large clouds. A fibre is long along the
+// flow (across the texture) and thin across it, and it wanders a little.
+function buildGas() {
+  const rand = mulberry(40977);
+  // Smooth noise on a grid of cx by cy cells that repeats at the edges.
+  const grid = (cx, cy) => {
+    const g = new Float32Array(cx * cy);
+    for (let i = 0; i < g.length; i++) g[i] = rand();
+    return (x, y) => {
+      const fx = x * cx, fy = y * cy;
+      const ix = Math.floor(fx), iy = Math.floor(fy);
+      let tx = fx - ix, ty = fy - iy;
+      tx = tx * tx * (3 - 2 * tx); ty = ty * ty * (3 - 2 * ty);
+      const x0 = ((ix % cx) + cx) % cx, x1 = (x0 + 1) % cx, y0 = ((iy % cy) + cy) % cy, y1 = (y0 + 1) % cy;
+      const a = g[y0 * cx + x0], b = g[y0 * cx + x1], c = g[y1 * cx + x0], d = g[y1 * cx + x1];
+      return a + (b - a) * tx + (c - a) * ty + (a - b - c + d) * tx * ty;
+    };
+  };
+  // Several grids, each twice as fine as the one before. `ridge` turns part
+  // of each into thin bright lines.
+  const stack = (cx, cy, octaves, gain, ridge) => {
+    const layers = [];
+    for (let k = 0; k < octaves; k++) layers.push(grid(cx << k, cy << k));
+    return (x, y) => {
+      let v = 0, a = 1, norm = 0;
+      for (let k = 0; k < octaves; k++) {
+        const n = layers[k](x, y);
+        v += a * (n + ridge * (1 - Math.abs(2 * n - 1) - n));
+        norm += a; a *= gain;
+      }
+      return v / norm;
+    };
+  };
+  const fibreA = stack(8, 16, 5, 0.8, 0.4), fibreB = stack(8, 16, 5, 0.8, 0.4);
+  const tufts = stack(32, 8, 3, 0.75, 0.3), clouds = stack(8, 4, 4, 0.6, 0);
+  const bendA = grid(7, 3), bendB = grid(9, 4), ripple = grid(18, 9), kinkA = grid(48, 20), kinkB = grid(56, 24);
+  const N = GAS_W * GAS_H;
+  const ch = [new Float32Array(N), new Float32Array(N), new Float32Array(N), new Float32Array(N)];
+  for (let j = 0; j < GAS_H; j++) {
+    const y = (j + 0.5) / GAS_H;
+    for (let i = 0; i < GAS_W; i++) {
+      const x = (i + 0.5) / GAS_W, o = j * GAS_W + i;
+      const rp = 0.012 * (ripple(x, y) - 0.5);
+      const ya = y + 0.05 * (bendA(x, y) - 0.5) + rp + 0.006 * (kinkA(x, y) - 0.5);
+      const yb = y + 0.05 * (bendB(x, y) - 0.5) - rp + 0.006 * (kinkB(x, y) - 0.5);
+      ch[0][o] = fibreA(x, ya);
+      ch[1][o] = fibreB(x, yb);
+      ch[2][o] = tufts(x, 0.5 * (ya + yb));
+      ch[3][o] = clouds(x, y + 0.5 * (ya - y));
     }
   }
-  const index = [];
-  for (let k = 0; k < S; k++) { const a = 2 * k; index.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
-
-  const rand = mulberry(20261113);
-  const gauss = () => Math.sqrt(-2 * Math.log(Math.max(rand(), 1e-12))) * Math.cos(2 * Math.PI * rand());
-  const a = look.rIn, b = look.rOut, k = look.crowd;
-  const ea = Math.pow(a, 1 - k), eb = Math.pow(b, 1 - k);
-  const orbit = new Float32Array(N * 4), lk = new Float32Array(N * 4);
-  for (let i = 0; i < N; i++) {
-    const r = Math.pow(ea + rand() * (eb - ea), 1 / (1 - k));
-    const share = (1 - k) / (eb - ea) * Math.pow(r, -k);       // strands per unit of radius, as a share of all
-    const span = 0.25 + 1.3 * Math.pow(rand(), 2);             // angle the strand covers
-    const lofted = rand() < look.loft;
-    // Height: a slab with soft faces, so that from the side the disk is a
-    // band of light and not a line.
-    const y = ((rand() * 2 - 1) * 1.25 + 0.3 * gauss()) * (look.thick + look.flare * r) * (lofted ? 2.5 : 1);
-    const w = look.width * (0.6 + 0.8 * rand()) * Math.pow(r / 4, 0.4);
-    const m = Math.exp(look.spread * gauss() - 0.5 * look.spread * look.spread) * (lofted ? 0.35 : 1);
-    orbit[i * 4] = r; orbit[i * 4 + 1] = rand() * 2 * Math.PI; orbit[i * 4 + 2] = span; orbit[i * 4 + 3] = y;
-    // Brightness of the strand itself, set so that all strands together
-    // give the profile.
-    lk[i * 4] = profile(r) * 2 * Math.PI / (N * share * span * w) * m;
-    lk[i * 4 + 1] = w;
-    lk[i * 4 + 2] = look.tIn * Math.pow(r / 3, -look.tSlope) * (1 + look.tSpread * gauss());
-    lk[i * 4 + 3] = rand();
+  // Every channel is spread to the same mean and contrast.
+  const data = new Uint8Array(N * 4);
+  for (let c = 0; c < 4; c++) {
+    let m = 0, q = 0;
+    for (let o = 0; o < N; o++) m += ch[c][o];
+    m /= N;
+    for (let o = 0; o < N; o++) q += (ch[c][o] - m) * (ch[c][o] - m);
+    const k = 0.17 / Math.sqrt(q / N);
+    for (let o = 0; o < N; o++) data[o * 4 + c] = Math.max(0, Math.min(255, Math.round(255 * (0.5 + (ch[c][o] - m) * k))));
   }
-  const geo = new THREE.InstancedBufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(base, 3));
-  geo.setIndex(index);
-  geo.setAttribute('aOrbit', new THREE.InstancedBufferAttribute(orbit, 4));
-  geo.setAttribute('aLook', new THREE.InstancedBufferAttribute(lk, 4));
-  geo.instanceCount = N;
-  return geo;
+  const tex = new THREE.DataTexture(data, GAS_W, GAS_H, THREE.RGBAFormat, THREE.UnsignedByteType);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.generateMipmaps = true;
+  tex.needsUpdate = true;
+  return tex;
 }
 
 // ---- Shaders ----
@@ -607,115 +818,264 @@ vec3 lensImage(vec3 P, float image, out vec3 L, out vec3 Ph, out vec3 e, out flo
 }
 `;
 
-const strandVert = /* glsl */`
-${GLSL_COMMON}
-${GLSL_LENS}
-attribute vec4 aOrbit;     // radius, angle at t = 0, angle covered, height
-attribute vec4 aLook;      // brightness, width (rs), temperature (K), seed
-uniform float uTime;
-uniform float uImage;
-uniform float uDist;
-uniform vec2 uViewport;    // pixels
-uniform float uPxPerRs;    // pixels per unit of impact parameter
-uniform vec4 uStrand;      // orbital speed, spiral pitch, least half-width (px), gain
-uniform vec3 uShift;       // Doppler shift in brightness and in colour; saturation
-uniform vec3 uAxis;        // angle around the hole of the point straight behind it; sine and cosine of the height of the camera above the disk
-varying float vX;
-varying vec3 vCol;
+// The gas of the disk. The disk is two thin sheets of glowing gas, one a
+// little above the plane and one a little below, inside a thick veil of
+// thinner gas. A sheet is drawn in fibres that run with the flow; cold dust
+// lies on its outer face. A line of sight meets these one after the other.
+// Each takes its share of the light from behind and adds its own, so the
+// disk is sheer where the gas is thin and a wall of light where it is deep.
+// The shader that includes this declares uCamDir and uDist.
+const GLSL_GAS = /* glsl */`
+#define RAY_W ${RAY_W}
+#define RAY_H ${RAY_H}
+#define RAY_PSI ${RAY_PSI.toFixed(8)}
+#define RAY_B ${RAY_B.toFixed(4)}
+#define RAY_EPS ${RAY_EPS.toFixed(6)}
+#define RAY_X0 ${RAY_X0.toFixed(4)}
+#define RAY_LA ${RAY_LA.toFixed(8)}
+#define RAY_LB ${RAY_LB.toFixed(8)}
+#define GAS_VS ${GAS_VS.toFixed(4)}
+#define GAS_PT ${GAS_PT.toFixed(1)}
+#define LANE ${LANE.toFixed(4)}
+#define LANE_S0 ${LANE_S0.toFixed(4)}
+#define GAS_LOOP 3600.0
+uniform sampler2D uRays;
+uniform sampler2D uGas;
+uniform vec3 uGasTime;     // time, orbital speed, drift of the texture towards the hole
+uniform vec4 uGasBody;     // inner radius, outer radius, brightness at radius 3, its fall with radius
+uniform vec4 uGasDepth;    // depth of the gas at radius 3, its fall with radius, contrast of fibres, of clouds
+uniform vec4 uGasSheet;    // height of a sheet, its growth with radius, thickness of the veil, size of the ripples
+uniform vec4 uGasHeat;     // temperature at radius 3, cooling with radius, extra heat of bright fibres
+uniform vec4 uGasVeil;     // depth and brightness of the veil, depth and brightness of the dust
+uniform vec4 uGasDust;     // where the dust starts; Doppler shift in brightness and in colour; light the dust stops
+uniform vec3 uGasEmber;    // most slant at which the outer gas is seen to glow; how fast its light falls far out; where that starts, as a share of the outer radius
 
-#define LOOP 3600.0
-
-// Angle around the line of sight of a point on a circle about the hole, made
-// to keep rising with the angle a along the circle (a = 0 is straight behind
-// the hole). k is how close the circle comes to the line of sight.
-float around(float a, float k) {
-  return TAU * floor(a / TAU + 0.5) + atan(sin(a), k * cos(a));
+// u = 1/r of the line of sight with impact parameter b, at the angle psi
+// around the hole, and its change with psi.
+vec2 rayAt(float b, float psi) {
+  float d = b - B_CRIT;
+  float x = d >= 0.0 ? RAY_X0 + (1.0 - RAY_X0) * log(1.0 + d / RAY_EPS) / RAY_LA
+                     : RAY_X0 - RAY_X0 * log(1.0 - d / RAY_EPS) / RAY_LB;
+  float fx = clamp(x, 0.0, 1.0) * float(RAY_W - 1);
+  float fy = clamp(psi / RAY_PSI, 0.0, 1.0) * float(RAY_H - 1);
+  ivec2 i0 = ivec2(int(fx), int(fy));
+  ivec2 i1 = min(i0 + 1, ivec2(RAY_W - 1, RAY_H - 1));
+  vec2 f = vec2(fx, fy) - vec2(i0);
+  vec2 p00 = texelFetch(uRays, i0, 0).rg;
+  vec2 p10 = texelFetch(uRays, ivec2(i1.x, i0.y), 0).rg;
+  vec2 p01 = texelFetch(uRays, ivec2(i0.x, i1.y), 0).rg;
+  vec2 p11 = texelFetch(uRays, i1, 0).rg;
+  return mix(mix(p00, p10, f.x), mix(p01, p11, f.x), f.y) / max(b, 1e-3);
 }
 
-void main() {
-  float side = position.y;
-  float r0 = aOrbit.x;
-  // Orbital speed, rounded so that the whole disk repeats after LOOP seconds
-  // and time never grows too large for the arithmetic.
-  float w = floor(uStrand.x * pow(r0, -1.5) * (LOOP / TAU) + 0.5) * (TAU / LOOP);
-  // The strand runs from the angle a0 to a1, counted from the point straight
-  // behind the hole.
-  float a0 = mod(aOrbit.y + w * uTime - 0.5 * aOrbit.z - uAxis.x + PI, TAU) - PI;
-  float a1 = a0 + aOrbit.z;
-  // Where a strand passes behind or in front of the hole, its image swings
-  // round the ring within a few degrees of arc. The points of the strand are
-  // spaced half evenly along it and half evenly around the line of sight, so
-  // that swing gets as many of them as it needs.
-  float k = max(abs(uAxis.y - abs(aOrbit.w) / r0 * uAxis.z), 0.012);
-  float want = mix(a0 + around(a0, k), a1 + around(a1, k), position.x);
-  float lo = a0, hi = a1;
-  for (int i = 0; i < 10; i++) {
-    float mid = 0.5 * (lo + hi);
-    if (mid + around(mid, k) < want) lo = mid; else hi = mid;
+// How far a step across the screen moves over the gas texture.
+vec2 gasStep(vec2 g, vec2 dg) {
+  float r2 = max(dot(g, g), 1e-3);
+  float turn = (g.x * dg.y - g.y * dg.x) / (r2 * TAU);
+  return clamp(vec2(turn, dot(g, dg) / r2 * GAS_VS + GAS_PT * turn), -0.3, 0.3);
+}
+
+// The gas turns in lanes, each at the speed of its own radius, so inner
+// lanes overtake outer ones. Each lane carries its own piece of the texture.
+vec4 laneGas(float j, float which, float s, float phi, vec2 gx, vec2 gy) {
+  float w = floor(uGasTime.y * exp(-1.5 * (LANE_S0 + j * LANE)) * (GAS_LOOP / TAU) + 0.5) * (TAU / GAS_LOOP);
+  vec3 h = hash23(vec2(j, 3.7 + 11.3 * which));
+  float turn = (phi - w * uGasTime.x) / TAU + h.x;
+  return textureGrad(uGas, vec2(turn, s * GAS_VS + GAS_PT * turn + h.y + uGasTime.z * uGasTime.x), gx, gy);
+}
+
+// Fibres, tufts and clouds of one of the sheets at a point of the disk plane.
+vec4 gasAt(vec2 g, float which, vec2 gx, vec2 gy) {
+  float s = 0.5 * log(max(dot(g, g), 1e-3));
+  float phi = atan(g.y, g.x);
+  float f = (s - LANE_S0) / LANE;
+  float j = floor(f);
+  float t = f - j;
+  t = t * t * (3.0 - 2.0 * t);
+  vec4 p = mix(laneGas(j, which, s, phi, gx, gy), laneGas(j + 1.0, which, s, phi, gx, gy), t);
+  // Two lanes averaged are flatter than one: give the contrast back.
+  return clamp(0.5 + (p - 0.5) / sqrt(1.0 - 2.0 * t * (1.0 - t)), 0.0, 1.0);
+}
+
+// A layer with light S and depth tau on the line of sight.
+void layer(inout vec3 L, inout float T, vec3 S, float tau) {
+  float a = 1.0 - exp(-tau);
+  L += T * S * a;
+  T *= 1.0 - a;
+}
+
+// Gas moving towards the camera is brighter and bluer; light climbing out
+// of the well is dimmer and redder.
+float gasShift(float r, float lam) {
+  return sqrt(max(1.0 - 1.5 / r, 0.0)) / max(1.0 - sqrt(0.5 / (r * r * r)) * lam, 0.3);
+}
+
+// Light of the gas at radius r: surface brightness and colour.
+vec3 gasGlow(float r, float heat, float g) {
+  float temp = uGasHeat.x * pow(r / 3.0, -uGasHeat.y) * heat * pow(max(g, 0.05), uGasDust.z);
+  // Colour of a hot body, with its strongest channel at 1. The hottest gas
+  // is a warm white: bluer, and its glare would turn the whole picture cold.
+  vec3 c = exp(vec3(0.0, -4374.0, -10680.0) * (1.0 / clamp(temp, 1000.0, 6000.0) - 1.0 / 6500.0));
+  return c * (uGasBody.z * pow(r / 3.0, -uGasBody.w) * pow(g, 4.0 * uGasDust.y));
+}
+
+// One slice of the veil at the point Q.
+void veil(inout vec3 L, inout float T, vec3 Q, float share, float slant, float lam) {
+  float r = length(Q.xz);
+  float body = smoothstep(uGasBody.x - 0.3, uGasBody.x + 0.9, r) * (1.0 - smoothstep(0.55 * uGasBody.y, 1.2 * uGasBody.y, r));
+  float g = gasShift(max(r, 1.6), lam);
+  layer(L, T, gasGlow(r, 0.82, g) * uGasVeil.y, uGasVeil.x * share * body * pow(r / 3.0, -uGasDepth.y) * slant);
+}
+
+// Height of a sheet above the disk plane, at a point of that plane, and its
+// slope there. A sheet is not flat: it is bent as a whole and rippled, each
+// sheet in its own way, so the two weave through each other and the fibres
+// cross at small angles.
+vec3 sheetHeight(int which, vec2 g) {
+  float r = max(length(g), 1.0);
+  float lr = log(r), phi = atan(g.y, g.x);
+  float side = which == 0 ? 1.0 : -1.0;
+  float k = which == 0 ? 0.0 : 2.4;
+  float turn = uGasTime.x * (TAU / GAS_LOOP);
+  float a1 = uGasSheet.w * 0.012 * r, a2 = uGasSheet.w * 0.016 * sqrt(r), a3 = uGasSheet.w * 0.010 * sqrt(r);
+  float p1 = phi - 1.3 * lr + 1.7 * k - 2.0 * turn;
+  float p2 = 3.0 * phi + 4.0 * lr + k - 6.0 * turn;
+  float p3 = 7.0 * phi - 9.0 * lr + 2.0 * k + 12.0 * turn;
+  float h = side * (uGasSheet.x + uGasSheet.y * r) + a1 * sin(p1) + a2 * sin(p2) + a3 * sin(p3);
+  float hr = side * uGasSheet.y
+           + (a1 * sin(p1) - 1.3 * a1 * cos(p1)) / r
+           + (0.5 * a2 * sin(p2) + 4.0 * a2 * cos(p2)) / r
+           + (0.5 * a3 * sin(p3) - 9.0 * a3 * cos(p3)) / r;
+  float hp = (a1 * cos(p1) + 3.0 * a2 * cos(p2) + 7.0 * a3 * cos(p3)) / r;
+  vec2 rh = g / r;
+  return vec3(h, rh * hr + vec2(-rh.y, rh.x) * hp);
+}
+
+// One sheet at the point Q. "first" says whether the line of sight meets
+// its dust before its gas.
+void sheet(inout vec3 L, inout float T, vec3 Q, int which, bool first, float slant, float lam, float foot, vec2 gx, vec2 gy) {
+  float r = length(Q.xz);
+  vec4 p = gasAt(Q.xz, float(which), gx, gy);
+  // Near the hole the gas is drawn out into long fibres; further out the
+  // flow is slower and it breaks into short tufts.
+  float tuft = 0.8 * smoothstep(3.5, 8.5, r);
+  float n = clamp(0.5 + ((which == 0 ? p.r : p.g) - 0.5) * (1.0 - tuft) + (p.b - 0.5) * tuft * 1.15, 0.0, 1.0);
+  float c = p.a;
+  // A ragged outer edge: clouds and bright fibres reach further out than
+  // the gaps between them.
+  float reachOut = c + 0.4 * (n - 0.5);
+  float rim = 1.0 - smoothstep(uGasBody.y * (0.45 + 0.4 * reachOut), uGasBody.y * (0.75 + 0.4 * reachOut), r);
+  // The inner edge is as soft as a pixel is wide there.
+  float body = smoothstep(uGasBody.x - foot, uGasBody.x + 0.5 + foot, r) * rim;
+  float g = gasShift(max(r, 1.6), lam);
+  float depth = uGasDepth.x * body * pow(r / 3.0, -uGasDepth.y) * pow(2.0 * n, uGasDepth.z) * pow(2.0 * c, uGasDepth.w);
+  // Deep gas near the hole is an even wall of light; further out the
+  // fibres differ in brightness.
+  vec3 glow = gasGlow(r, 1.0 + uGasHeat.z * (2.0 * n - 1.0), g) * mix(0.9 + 0.2 * n, 0.45 + 2.2 * n * n, smoothstep(2.5, 5.5, r)) * (0.6 + 0.8 * c);
+  // Thinner gas and dust reach further out than the bright gas, in fibres
+  // of their own. The gas glows in the light of the inner disk. It has the
+  // colour of the bright gas at the same radius, and beyond the edge of the
+  // bright disk the colour of that edge: a pale colour of its own would
+  // read as paint. Beyond the outer radius times uGasEmber.z the light
+  // reaches it at a slant, so it falls off fast and the gas dims to
+  // nothing. Seen at a slant itself, the gas would add up into a sheet of
+  // even colour, so it is never taken as thicker than at the slant
+  // uGasEmber.x: it stays tufts of light on the dark. The dust in it dims
+  // what lies behind a little.
+  float grit = smoothstep(0.38, 0.72, which == 0 ? p.g : p.r) * (0.4 + 1.2 * n);
+  float dustRim = 1.0 - smoothstep(1.1 * uGasBody.y, 1.7 * uGasBody.y, r);
+  float dustDepth = uGasVeil.z * smoothstep(uGasDust.x, uGasDust.x + 3.0, r) * dustRim * grit * grit * slant;
+  vec3 tint = gasGlow(min(r, 0.75 * uGasBody.y), 1.0, g);
+  float far = pow(max(r / (uGasEmber.z * uGasBody.y), 1.0), -uGasEmber.y);
+  vec3 dustGlow = tint * (uGasVeil.w * uGasBody.z * 9.0 / (r * r) * far * pow(g, 4.0 * uGasDust.y) / dot(tint, LUMA));
+  float ember = 1.0 - exp(-dustDepth * min(1.0, uGasEmber.x / slant));
+  float shade = exp(-uGasDust.w * min(dustDepth, 2.0));
+  if (first) { L += T * dustGlow * ember; T *= shade; }
+  layer(L, T, glow, depth * slant);
+  if (!first) { L += T * dustGlow * ember; T *= shade; }
+}
+
+// Where the line of sight goes through the disk at the point P, travelling
+// along d: half of the veil, the two sheets, the other half of the veil.
+void crossing(inout vec3 L, inout float T, vec3 P, vec3 d, float lam, float foot, vec2 gx, vec2 gy) {
+  float r0 = length(P.xz);
+  float dy = abs(d.y) < 0.02 ? (d.y < 0.0 ? -0.02 : 0.02) : d.y;
+  float slant = 1.0 / abs(dy);
+  float way = dy < 0.0 ? 1.0 : -1.0;       // 1 when the light we follow goes down through the disk
+  float lift = uGasSheet.x + uGasSheet.y * r0;
+  float thick = uGasSheet.z * (1.0 + 0.05 * r0);
+  // Near the disk the line of sight is almost straight: t is the distance
+  // along it from P.
+  #define AT(h) (P + d * clamp(((h) - P.y) / dy, -5.0, 5.0))
+  // Where it meets each rippled sheet, and how steeply.
+  vec3 Q0 = AT(lift), Q1 = AT(-lift);
+  vec3 h0, h1;
+  for (int i = 0; i < 3; i++) {
+    h0 = sheetHeight(0, Q0.xz);
+    h1 = sheetHeight(1, Q1.xz);
+    Q0 = mix(Q0, AT(h0.x), 0.75);
+    Q1 = mix(Q1, AT(h1.x), 0.75);
   }
-  float a = 0.5 * (lo + hi);
-  float s = (a - a0) / aOrbit.z;
-  float phi = uAxis.x + a;
-  float r = r0 * (1.0 + uStrand.y * (s - 0.5) * aOrbit.z);
-  float cph = cos(phi), sph = sin(phi);
-  vec3 P = vec3(r * cph, aOrbit.w, r * sph);
-  vec3 tang = normalize(vec3(-sph + uStrand.y * cph, 0.0, cph + uStrand.y * sph));
-
-  vec3 L, Ph, e;
-  float cpsi, spsi, sgn;
-  vec3 Pv = lensImage(P, uImage, L, Ph, e, cpsi, spsi, sgn);
-  vec4 clip = projectionMatrix * viewMatrix * vec4(Pv, 1.0);
-
-  // How a small step along the strand moves its image: db away from the hole
-  // and dt around it, both in units of impact parameter.
-  float rr = length(P);
-  float b = L.x;
-  vec3 psiHat = e * cpsi - uCamDir * spsi;
-  vec3 phiHat = cross(uCamDir, e);
-  float At = min(b / (rr * spsi), 40.0);
-  float db = L.z * dot(tang, Ph) + sgn * L.y / rr * dot(tang, psiHat);
-  float dt = At * dot(tang, phiHat);
-  float dl = max(length(vec2(db, dt)), 1e-5);
-  float sinT = min(b * uSinScale, 0.999);
-  float cosT = sqrt(1.0 - sinT * sinT);
-  vec3 along = ((uCamDir * sinT + e * (sgn * cosT)) * db + phiHat * (sgn * dt)) / dl;
-  vec4 clip2 = projectionMatrix * viewMatrix * vec4(Pv + along * (0.02 * uDist), 1.0);
-  vec2 sdir = (clip2.xy / clip2.w - clip.xy / clip.w) * uViewport;
-  sdir /= max(length(sdir), 1e-6);
-
-  // A strand is a thin tube of light. The hole squeezes its image one way
-  // and stretches it the other; its apparent width follows.
-  vec2 n2 = vec2(-dt, db) / dl;
-  float Am = length(vec2(L.y / rr, L.z));
-  float wApp = aLook.y * length(vec2(n2.x * Am, n2.y * At)) * uPxPerRs;
-  // Thinner than a pixel, it is drawn a pixel wide and dimmer instead.
-  float hw = max(0.5 * wApp, uStrand.z);
-  float sigma = 0.7 * hw;
-  clip.xy += vec2(-sdir.y, sdir.x) * (side * 2.2 * sigma) * 2.0 / uViewport * clip.w;
-  gl_Position = clip;
-  vX = side * 2.2;
-
-  // Light: fades in and out along the strand, and beads a little.
-  float taper = smoothstep(0.0, 0.3, s) * smoothstep(1.0, 0.7, s);
-  float bead = 0.7 + 0.3 * sin(aLook.w * 40.0 + s * aOrbit.z * (6.0 + 30.0 * fract(aLook.w * 7.31)));
-  // Straight behind the hole a strand would be drawn out into a whole ring;
-  // so would the second image of a strand straight in front of it.
-  float behind = (uImage > 0.5 || cpsi < 0.0) ? smoothstep(0.008, 0.03, spsi) : 1.0;
-  // Gas moving towards the camera is brighter and bluer; light climbing out
-  // of the well is dimmer and redder.
-  float lam = -b * sgn * cross(Ph, uCamDir).y / spsi;
-  float g = sqrt(max(1.0 - 1.5 / rr, 0.0)) / max(1.0 - sqrt(0.5 / (rr * rr * rr)) * lam, 0.3);
-  float I = aLook.x * uStrand.w * taper * bead * behind * pow(g, 4.0 * uShift.x) * wApp / (sigma * 2.5066);
-  float T = aLook.z * pow(max(g, 0.05), uShift.y);
-  vCol = mix(vec3(1.0), blackbody(clamp(T, 1500.0, 14000.0)), uShift.z) * I;
+  float s0 = 1.0 / max(abs(d.y - dot(d.xz, h0.yz)) / sqrt(1.0 + dot(h0.yz, h0.yz)), 0.025);
+  float s1 = 1.0 / max(abs(d.y - dot(d.xz, h1.yz)) / sqrt(1.0 + dot(h1.yz, h1.yz)), 0.025);
+  bool topFirst = dot(Q0 - Q1, d) < 0.0;
+  // A line of sight that reaches the plane inside the hole ends there: it
+  // meets only what lies before the plane. Its path is too bent for the
+  // wide veil to be placed on it, so the veil fades out there.
+  bool ends = r0 < 1.2;
+  bool on0 = !(ends && dot(Q0 - P, d) > 0.0), on1 = !(ends && dot(Q1 - P, d) > 0.0);
+  float open = smoothstep(1.0, 1.7, r0);
+  veil(L, T, AT(way * 1.5 * thick), 0.133 * open, slant, lam);
+  veil(L, T, AT(way * 0.5 * thick), 0.367 * open, slant, lam);
+  if (topFirst) {
+    if (on0) sheet(L, T, Q0, 0, way > 0.0, s0, lam, foot, gx, gy);
+    if (on1) sheet(L, T, Q1, 1, way < 0.0, s1, lam, foot, gx, gy);
+  } else {
+    if (on1) sheet(L, T, Q1, 1, way < 0.0, s1, lam, foot, gx, gy);
+    if (on0) sheet(L, T, Q0, 0, way > 0.0, s0, lam, foot, gx, gy);
+  }
+  veil(L, T, AT(-way * 0.5 * thick), 0.367 * open, slant, lam);
+  veil(L, T, AT(-way * 1.5 * thick), 0.133 * open, slant, lam);
+  #undef AT
 }
-`;
 
-const strandFrag = /* glsl */`
-varying float vX;
-varying vec3 vCol;
-void main() {
-  gl_FragColor = vec4(vCol * exp(-0.5 * vX * vX), 1.0);
+// Light of the disk along the line of sight rd, and the share of the light
+// from behind that it lets through. Nothing further than "reach" counts.
+vec4 diskLight(vec3 rd, float reach) {
+  float cosT = dot(rd, -uCamDir);
+  float sinT = sqrt(max(1.0 - cosT * cosT, 1e-10));
+  float b = min(uDist * sinT / sqrt(1.0 - 1.0 / uDist), RAY_B);
+  // The side of the hole the line of sight passes on. Aimed straight at the
+  // hole it has no side: any one will do.
+  vec3 e = rd + uCamDir * cosT;
+  float away = length(e);
+  e = away > 1e-5 ? e / away : normalize(cross(uCamDir, vec3(0.0, 0.0, 1.0)));
+  // The line of sight goes through the disk plane at the angle psi around
+  // the hole, and again half a turn later.
+  float psi = atan(-uCamDir.y, e.y) + PI;
+  float sp = sin(psi), cp = cos(psi);
+  vec3 Ph = uCamDir * cp + e * sp, Pt = e * cp - uCamDir * sp;
+  float lam = -b * cross(e, uCamDir).y;
+  vec2 ua = rayAt(b, psi), ub = rayAt(b, psi + PI);
+  // A sheet lies off the plane, so the line of sight can meet it outside
+  // the hole and reach the plane only inside: those lines count too.
+  float lo = 1.0 / (1.7 * uGasBody.y), hi = 2.5;
+  bool seen = cosT > 0.05 && b < RAY_B - 0.01;
+  bool okA = seen && ua.x > lo && ua.x < hi, okB = seen && ub.x > lo && ub.x < hi;
+  float ia = clamp(ua.x, 0.02, hi), ib = clamp(ub.x, 0.02, hi);
+  vec3 Pa = Ph / ia, Pb = -Ph / ib;
+  vec3 da = normalize(Pt - Ph * (ua.y / ia)), db = -normalize(Pt - Ph * (ub.y / ib));
+  // Size of a pixel on the disk: for the texture, and along the radius.
+  vec2 ax = dFdx(Pa.xz), ay = dFdy(Pa.xz), bx = dFdx(Pb.xz), by = dFdy(Pb.xz);
+  vec2 gax = gasStep(Pa.xz, ax), gay = gasStep(Pa.xz, ay);
+  vec2 gbx = gasStep(Pb.xz, bx), gby = gasStep(Pb.xz, by);
+  float fa = min(2.2 * length(vec2(dot(Pa.xz, ax), dot(Pa.xz, ay))) / max(length(Pa.xz), 0.5), 2.0);
+  float fb = min(2.2 * length(vec2(dot(Pb.xz, bx), dot(Pb.xz, by))) / max(length(Pb.xz), 0.5), 2.0);
+  vec3 L = vec3(0.0);
+  float T = 1.0;
+  if (okA && distance(Pa, cameraPosition) < reach) crossing(L, T, Pa, da, lam, fa, gax, gay);
+  if (okB && T > 0.003 && distance(Pb, cameraPosition) < reach) crossing(L, T, Pb, db, lam, fb, gbx, gby);
+  return vec4(L, T);
 }
 `;
 
@@ -748,8 +1108,9 @@ uniform float uPxPerRad;
 uniform vec3 uGalaxy;      // direction of a faint background galaxy
 uniform vec3 uMwNormal;    // Milky Way plane normal
 uniform vec3 uMwCentre;    // direction of the galactic centre, in that plane
-const vec3 FOG_CORE = vec3(0.88, 0.84, 1.00);
-const vec3 FOG_HALO = vec3(0.64, 0.80, 1.10);
+${GLSL_GAS}
+const vec3 FOG_CORE = vec3(1.00, 0.93, 0.82);
+const vec3 FOG_HALO = vec3(0.42, 0.86, 1.00);
 vec2 octa(vec3 d) {
   d /= (abs(d.x) + abs(d.y) + abs(d.z));
   vec2 sgn = vec2(d.x >= 0.0 ? 1.0 : -1.0, d.z >= 0.0 ? 1.0 : -1.0);
@@ -865,7 +1226,7 @@ vec3 starfield(vec3 d, float turn) {
 
   // Space itself: almost black, with the faintest cool cast.
   float n1 = fbm3(d * 3.0 + 1.7, 2);
-  col += vec3(0.0012, 0.0021, 0.0040) * (0.6 + 0.8 * n1);
+  col += vec3(0.0010, 0.0038, 0.0046) * (0.6 + 0.8 * n1);
   return col;
 }
 
@@ -892,17 +1253,25 @@ void main() {
       float ang = skyAngle(b);
       col = starfield(normalize(uCamDir * cos(ang) + e * sin(ang)), ang - (PI - asin(sinT)));
     }
-    // Thin hot gas around the hole glows faintly: this is the haze of the
-    // picture, and what fills the shadow with a pale light.
+    // Thin hot gas around the hole glows faintly. Most of the pale light
+    // inside the shadow is not this but the glare of the disk.
     col += FOG_CORE * (uFog.x * exp(-b * b / (uFog.y * uFog.y))) + FOG_HALO * (uFog.z * exp(-b * b / (uFog.w * uFog.w)));
     // The photon ring: light that circled the hole before it left.
     float dr = (b - B_CRIT - 0.035) / 0.03;
-    col += vec3(0.95, 0.93, 1.0) * (uRing * exp(-dr * dr));
+    col += vec3(1.0, 0.90, 0.74) * (uRing * exp(-dr * dr));
   }
-  // In 8 bits the faint haze would show as steps: a little noise turns them
-  // into grain.
-  col += uCoarse * (hash21(gl_FragCoord.xy) + hash21(gl_FragCoord.yx * 1.31 + 7.0) - 1.0) / 255.0;
-  gl_FragColor = vec4(max(col, 0.0), 1.0);
+  // The disk, in front of all that.
+  vec4 gas = diskLight(rd, 1e9);
+  col = gas.rgb + col * gas.a;
+  col = max(col, 0.0);
+  // In 8 bits light is stored squeezed, so that it keeps its hue however
+  // bright it is and the dark sky gets most of the steps. A little noise
+  // turns the steps that are left into grain.
+  if (uCoarse > 0.5) {
+    col = sqrt(col / (1.0 + max(col.r, max(col.g, col.b))))
+        + (hash21(gl_FragCoord.xy) + hash21(gl_FragCoord.yx * 1.31 + 7.0) - 1.0) / 255.0;
+  }
+  gl_FragColor = vec4(col, 1.0);
 }
 `;
 
@@ -924,6 +1293,13 @@ ${GLSL_COMMON}
 varying vec3 vWorld;
 uniform vec4 uPlanet;      // xyz centre, w radius
 uniform float uTime;
+uniform mat4 uProjInv;
+uniform mat4 uCamWorld;
+uniform vec2 uViewport;
+uniform vec3 uCamDir;
+uniform float uDist;
+uniform float uCoarse;
+${GLSL_GAS}
 // An ocean world. Lit by the hot inner disk, a broad source, so the
 // terminator is soft; faintly lit from the disk plane on the side facing it.
 // Cloud bands drift as it spins, the ocean glints, and a thin atmosphere
@@ -950,7 +1326,14 @@ vec3 planetShade(vec3 hp, vec3 rd) {
   return c;
 }
 void main() {
-  gl_FragColor = vec4(planetShade(vWorld, normalize(vWorld - cameraPosition)), 1.0);
+  vec3 shade = planetShade(vWorld, normalize(vWorld - cameraPosition));
+  // The gas between the camera and the planet lies over it.
+  vec4 v = uProjInv * vec4(gl_FragCoord.xy / uViewport * 2.0 - 1.0, 1.0, 1.0);
+  vec3 rd = normalize((uCamWorld * vec4(v.xyz / v.w, 0.0)).xyz);
+  vec4 gas = diskLight(rd, distance(vWorld, cameraPosition));
+  vec3 col = gas.rgb + shade * gas.a;
+  if (uCoarse > 0.5) col = sqrt(col / (1.0 + max(col.r, max(col.g, col.b))));
+  gl_FragColor = vec4(col, 1.0);
 }
 `;
 
@@ -1002,13 +1385,25 @@ uniform float uExposure;
 uniform vec4 uGlowA;   // share of the light spread over halos 1 to 4, tightest first
 uniform vec4 uGlowB;   // share of the widest halo; white level; sharpness of the shoulder
 uniform vec2 uGrade;   // vignette, grain
+uniform float uCoarse; // 1 when light is stored in 8 bits, squeezed
+uniform vec4 uHole;    // the hole on screen: centre (uv), radius of its shadow (share of the frame height), width over height
+uniform vec4 uFall;    // falling in: edge of the dark (shadow radii), twist there (radians), length of the streaks, darkness inside
+uniform vec4 uFall2;   // squeeze of the sky outside the dark, fall-off of the twist outward, width of the glow inside the edge
+vec3 light(sampler2D tex, vec2 uv) {
+  vec3 e = texture2D(tex, uv).rgb;
+  if (uCoarse < 0.5) return e;
+  vec3 n = e * e;
+  return n / max(1.0 - max(n.r, max(n.g, n.b)), 0.004);
+}
 const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
-// Response of a print: straight through the shadows and mid-tones, then a
-// shoulder that closes on a white short of full and a little cool. Where the
-// strands crowd together the disk turns milky instead of burning out.
+// Response of the film: straight through the shadows and mid-tones, then a
+// shoulder. A colour keeps its hue on the way up and burns out to a warm
+// white, so fire goes from red through salmon to cream, never to yellow.
 vec3 film(vec3 x) {
-  vec3 w = uGlowB.y * vec3(0.992, 0.985, 1.016);
-  return x / pow(1.0 + pow(x / w, vec3(uGlowB.z)), vec3(1.0 / uGlowB.z));
+  float m = max(max(x.r, x.g), max(x.b, 1e-6));
+  float t = m / pow(1.0 + pow(m / uGlowB.y, uGlowB.z), 1.0 / uGlowB.z);
+  float burn = m * m / (m * m + uGlowB.w * uGlowB.w);
+  return t * mix(x / m, vec3(1.0, 0.89, 0.62), burn);
 }
 vec3 srgb(vec3 c) {
   return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
@@ -1018,16 +1413,76 @@ float hash(vec2 p) {
   p3 += dot(p3, p3.yzx + 33.33);
   return fract((p3.x + p3.y) * p3.z);
 }
+// Glare of the lens: every halo is the scene itself, blurred, and takes
+// its share of the light. The widest is blue-green: it turns the light of
+// the disk into the teal haze of the sky around it. The ones before it
+// are warm, and warmer as they widen, so that inside the hole, where all
+// of them reach, the haze stays grey.
+// The twisted fall reaches beyond the edges of the frame. There the frame
+// is mirrored: the streaked, turning gas hides the seam.
+vec2 mirror(vec2 uv) {
+  return 1.0 - abs(1.0 - mod(uv, 2.0));
+}
+// In the fall the scene is drawn wider than the screen (uFall2.w): from a
+// point of the screen to the same point of the scene as drawn.
+vec2 toScene(vec2 uv) {
+  return mirror(0.5 + (uv - 0.5) / uFall2.w);
+}
+vec3 sceneAt(vec2 uv) {
+  return light(uScene, toScene(uv));
+}
+vec3 glare(vec2 uv) {
+  return light(uBloom1, uv) * vec3(1.00, 0.96, 0.92) * uGlowA.x
+    + light(uBloom2, uv) * vec3(1.00, 0.95, 0.90) * uGlowA.y
+    + light(uBloom3, uv) * vec3(1.00, 0.85, 0.70) * uGlowA.z
+    + light(uBloom4, uv) * vec3(1.00, 0.50, 0.28) * uGlowA.w
+    + light(uBloom5, uv) * vec3(0.08, 0.85, 1.45) * uGlowB.x;
+}
 void main() {
   vec2 q = vUv - 0.5;
-  // Glare of the lens: every halo is the scene itself, blurred, and takes
-  // its share of the light. The wider the halo, the bluer.
-  vec3 c = texture2D(uScene, vUv).rgb * (1.0 - (uGlowA.x + uGlowA.y + uGlowA.z + uGlowA.w + uGlowB.x))
-    + texture2D(uBloom1, vUv).rgb * uGlowA.x
-    + texture2D(uBloom2, vUv).rgb * vec3(1.00, 0.98, 1.02) * uGlowA.y
-    + texture2D(uBloom3, vUv).rgb * vec3(0.92, 0.94, 1.08) * uGlowA.z
-    + texture2D(uBloom4, vUv).rgb * vec3(0.66, 0.84, 1.16) * uGlowA.w
-    + texture2D(uBloom5, vUv).rgb * vec3(0.34, 0.66, 1.18) * uGlowB.x;
+  float direct = 1.0 - (uGlowA.x + uGlowA.y + uGlowA.z + uGlowA.w + uGlowB.x);
+  vec3 c;
+  if (uFall.x <= 1.0 && uFall.y == 0.0) {
+    c = light(uScene, vUv) * direct + glare(vUv);
+  } else {
+    // Falling in. Closer to the hole its shadow covers more of the sky, and
+    // all that lies outside it is pushed out and squeezed into a ring at the
+    // edge of the dark: a point r shadow radii from the centre shows what
+    // was at s. Space near the edge is twisted round the way the disk turns
+    // (counterclockwise on screen), and light is drawn out along the fall.
+    vec2 w = vec2(uHole.w, 1.0);
+    vec2 d = (vUv - uHole.xy) * w;
+    float r = length(d) / uHole.z;
+    float h = uFall.x;
+    float x = r / h;
+    float s = r < h ? x : sqrt((r * r - h * h) * uFall2.x + 1.0);
+    float turn = -uFall.y * min(1.0, pow(h / max(r, 1e-3), uFall2.y));
+    vec2 dir = d / max(length(d), 1e-6);
+    dir = mat2(cos(turn), sin(turn), -sin(turn), cos(turn)) * dir;
+    vec2 unit = dir * uHole.z / w;
+    // The streaks reach back toward the hole, but not into its shadow:
+    // outside the dark they only draw out light that is outside it too.
+    int taps = uFall.z > 0.0 ? 12 : 1;
+    float floor_ = r < h ? 0.0 : 1.0;
+    vec3 e = vec3(0.0);
+    float j = hash(gl_FragCoord.xy * 0.73 + 5.0);
+    for (int k = 0; k < 12; k++) {
+      if (k >= taps) break;
+      e += sceneAt(uHole.xy + unit * max(floor_, s * (1.0 - uFall.z * (float(k) + j) / 12.0)));
+    }
+    e *= direct / float(taps);
+    if (r >= h) {
+      c = e + glare(toScene(uHole.xy + unit * s));
+    } else {
+      // Inside the dark, what was in the shadow goes out. Near the edge the
+      // light of the ring still spills in, and fades toward the centre.
+      float fade = 1.0 - uFall.w;
+      float gone = 1.0 - fade * fade * fade;
+      float rim = pow(smoothstep(1.0 - uFall2.z, 1.0, x), 2.0);
+      vec3 ring = light(uBloom1, toScene(uHole.xy + unit * 1.1)) * direct;
+      c = e * (1.0 - gone) + ring * (gone * rim) + glare(toScene(uHole.xy + unit * x)) * (fade + uFall.w * rim);
+    }
+  }
   c = film(max(c, 0.0) * uExposure);
   c *= 1.0 - uGrade.x * smoothstep(0.15, 0.80, dot(q, q));
   c = srgb(c);
@@ -1042,6 +1497,7 @@ void main() {
 
 // ---- Start ----
 function start() {
+  const booted = performance.now();
   // WebGL 2 on a real graphics chip. A browser that would draw this in
   // software gets the still: a frame a second is worse than a picture.
   if (!document.createElement('canvas').getContext('webgl2', { failIfMajorPerformanceCaveat: true })) { fail('WebGL unavailable'); return; }
@@ -1054,7 +1510,7 @@ function start() {
   }
   const gl = renderer.getContext();
   // Light is kept in half floats. Without them the picture still draws, in
-  // 8 bits: the faintest strands are lost and the glare is weaker.
+  // 8 bits: the faintest gas is lost and the glare is weaker.
   const hdr = !!(gl.getExtension('EXT_color_buffer_float') || gl.getExtension('EXT_color_buffer_half_float')) && !/[?&]ldr=1/.test(search);
   const texType = hdr ? THREE.HalfFloatType : THREE.UnsignedByteType;
   renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
@@ -1125,6 +1581,14 @@ function start() {
   // Scene.
   const lensTex = buildLens();
   const skyTex = buildSky();
+  const gasTex = buildGas();
+  gasTex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  const gasUniforms = {
+    uRays: { value: buildRays() }, uGas: { value: gasTex }, uGasTime: { value: new THREE.Vector3() },
+    uGasBody: { value: new THREE.Vector4() }, uGasDepth: { value: new THREE.Vector4() },
+    uGasSheet: { value: new THREE.Vector4() }, uGasHeat: { value: new THREE.Vector4() },
+    uGasVeil: { value: new THREE.Vector4() }, uGasDust: { value: new THREE.Vector4() }, uGasEmber: { value: new THREE.Vector3() }
+  };
   const scene = new THREE.Scene();
   const camDir = new THREE.Vector3(0, 0, 1);
   const viewport = new THREE.Vector2(1, 1);
@@ -1133,14 +1597,14 @@ function start() {
 
   const skyMat = new THREE.ShaderMaterial({
     vertexShader: skyVert, fragmentShader: skyFrag, depthTest: false, depthWrite: false,
-    uniforms: {
+    uniforms: Object.assign({}, gasUniforms, {
       uProjInv: { value: camera.projectionMatrixInverse }, uCamWorld: { value: camera.matrixWorld },
       uCamPos: { value: camera.position }, uCamDir: { value: camDir }, uDist: { value: D },
       uSky: { value: skyTex }, uFog: { value: new THREE.Vector4() }, uRing: { value: 0 }, uCoarse: { value: hdr ? 0 : 1 },
       uStars: { value: 0 }, uEinstein: { value: Math.sqrt(2 / D) }, uPxPerRad: { value: 1 },
       uGalaxy: { value: new THREE.Vector3(...galaxyDir) }, uMwNormal: { value: new THREE.Vector3(...mwNormal) },
       uMwCentre: { value: new THREE.Vector3(...mwCentre) }
-    }
+    })
   });
   const sky = new THREE.Mesh(tri, skyMat);
   sky.frustumCulled = false;
@@ -1150,33 +1614,15 @@ function start() {
   const lensUniforms = () => ({ uLens: { value: lensTex }, uCamDir: { value: camDir }, uSinScale: { value: sinPerB } });
   const planetMat = new THREE.ShaderMaterial({
     vertexShader: planetVert, fragmentShader: planetFrag, side: THREE.DoubleSide,
-    uniforms: Object.assign(lensUniforms(), { uPlanet: { value: new THREE.Vector4() }, uTime: { value: 0 } })
+    uniforms: Object.assign(lensUniforms(), gasUniforms, {
+      uPlanet: { value: new THREE.Vector4() }, uTime: { value: 0 }, uProjInv: { value: camera.projectionMatrixInverse },
+      uCamWorld: { value: camera.matrixWorld }, uViewport: { value: viewport }, uDist: { value: D }, uCoarse: { value: hdr ? 0 : 1 }
+    })
   });
   const planet = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 40), planetMat);
   planet.frustumCulled = false;
   planet.renderOrder = -5;
   scene.add(planet);
-
-  const strandCount = Math.round(look.count);
-  const strands = buildStrands(strandCount, Math.round(look.pieces));
-  // The picture starts with half of the strands, each twice as bright, and
-  // adds the rest while frames stay quick.
-  if (!reduced) strands.instanceCount = Math.round(strandCount * 0.5);
-  const strandMats = [0, 1].map(image => new THREE.ShaderMaterial({
-    vertexShader: strandVert, fragmentShader: strandFrag,
-    blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, depthTest: true, side: THREE.DoubleSide,
-    uniforms: Object.assign(lensUniforms(), {
-      uTime: { value: 0 }, uImage: { value: image }, uDist: { value: D }, uViewport: { value: viewport },
-      uPxPerRs: { value: 1 }, uStrand: { value: new THREE.Vector4() }, uShift: { value: new THREE.Vector3() },
-      uAxis: { value: new THREE.Vector3() }
-    })
-  }));
-  strandMats.forEach((mat, k) => {
-    const mesh = new THREE.Mesh(strands, mat);
-    mesh.frustumCulled = false;
-    mesh.renderOrder = 10 + k;
-    scene.add(mesh);
-  });
 
   // Post: glare and camera response.
   const postScene = new THREE.Scene();
@@ -1190,7 +1636,8 @@ function start() {
   const compositeMat = passMat(compositeFrag, {
     uScene: { value: null }, uBloom1: { value: null }, uBloom2: { value: null }, uBloom3: { value: null },
     uBloom4: { value: null }, uBloom5: { value: null }, uTime: { value: 0 }, uExposure: { value: 1 },
-    uGlowA: { value: new THREE.Vector4() }, uGlowB: { value: new THREE.Vector4() }, uGrade: { value: new THREE.Vector2() }
+    uGlowA: { value: new THREE.Vector4() }, uGlowB: { value: new THREE.Vector4() }, uGrade: { value: new THREE.Vector2() },
+    uCoarse: { value: hdr ? 0 : 1 }, uHole: { value: new THREE.Vector4() }, uFall: { value: new THREE.Vector4() }, uFall2: { value: new THREE.Vector4() }
   });
   function pass(mat, target) {
     postMesh.material = mat;
@@ -1240,20 +1687,47 @@ function start() {
 
   // ---- Moving around it ----
   // The pointer nudges the view; a drag turns the camera around the hole.
-  // Left alone, the view drifts back to where it started.
+  // Left alone, the view drifts back to where it started. A tap on the
+  // shadow, not a drag that ends there, is the way in; a pointer resting on
+  // the shadow makes the hole lean toward it a little.
   const view = { az: 0, el: look.incl * deg, zoom: 1, taz: 0, tel: look.incl * deg, tzoom: 1 };
   let mx = 0, my = 0, tmx = 0, tmy = 0, held = false, px = 0, py = 0, touched = -1e9, clock = 0;
   let pending = 240;      // frames still to draw when the picture is otherwise still
-  canvas.addEventListener('pointerdown', e => {
-    held = true; px = e.clientX; py = e.clientY; pending = 240;
+  let downX = 0, downY = 0, downAt = 0, travel = 0;
+  let holeX = 0, holeY = 0, holeR = 0;    // the shadow on screen, in CSS pixels
+  let over = false, lure = 0;
+  const inHole = (x, y) => holeR > 0 && Math.hypot(x - holeX, y - holeY) <= holeR;
+  const press = e => {
+    if (fallAt) return;
+    // Other buttons, and keys held for a new tab or window, are the link's.
+    if (e.currentTarget === portal && (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey)) return;
+    held = true; px = downX = e.clientX; py = downY = e.clientY; downAt = performance.now(); travel = 0; pending = 240;
     canvas.classList.add('is-held');
-    if (canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
+    if (canvas.setPointerCapture) { try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* released already */ } }
+  };
+  const release = e => {
+    if (!held) return;
+    held = false; touched = clock; canvas.classList.remove('is-held');
+    if (e.type === 'pointerup' && travel < 8 && performance.now() - downAt < 700 && inHole(e.clientX, e.clientY)) enter();
+  };
+  [canvas, portal].forEach(el => {
+    el.addEventListener('pointerdown', press);
+    el.addEventListener('pointerup', release);
+    el.addEventListener('pointercancel', release);
+    el.addEventListener('wheel', e => {
+      e.preventDefault();
+      if (fallAt) return;
+      view.tzoom = Math.max(0.6, Math.min(3, view.tzoom * Math.exp(-e.deltaY * 0.0012)));
+      touched = clock; pending = 240;
+    }, { passive: false });
   });
-  const release = () => { held = false; touched = clock; canvas.classList.remove('is-held'); };
-  canvas.addEventListener('pointerup', release);
-  canvas.addEventListener('pointercancel', release);
+  canvas.addEventListener('dblclick', () => { view.taz = 0; view.tel = look.incl * deg; view.tzoom = 1; pending = 240; });
+  portal.addEventListener('pointerenter', e => { if (!reduced && e.pointerType !== 'touch') over = true; });
+  portal.addEventListener('pointerleave', () => { over = false; });
   window.addEventListener('pointermove', e => {
+    if (fallAt) return;
     if (held) {
+      travel = Math.max(travel, Math.hypot(e.clientX - downX, e.clientY - downY));
       view.taz -= (e.clientX - px) * 0.005;
       view.tel = Math.max(2.5 * deg, Math.min(80 * deg, view.tel + (e.clientY - py) * 0.005));
       px = e.clientX; py = e.clientY;
@@ -1264,17 +1738,56 @@ function start() {
     }
   }, { passive: true });
   window.addEventListener('pointerleave', () => { tmx = 0; tmy = 0; });
-  canvas.addEventListener('wheel', e => {
-    e.preventDefault();
-    view.tzoom = Math.max(0.6, Math.min(3, view.tzoom * Math.exp(-e.deltaY * 0.0012)));
-    touched = clock; pending = 240;
-  }, { passive: false });
-  canvas.addEventListener('dblclick', () => { view.taz = 0; view.tel = look.incl * deg; view.tzoom = 1; pending = 240; });
+
+  // ---- Falling in ----
+  // Every part of the fall is a function of the time since the tap, so any
+  // moment of it can be drawn on its own. With T < 0 nothing changes.
+  function fallState(T) {
+    const p = Math.min(1, Math.max(0, T / FALL));
+    return {
+      pull: smooth01(p / 0.5),                            // the camera turns to the hole
+      zoom: Math.pow(look.fallNear, smooth01(p / 0.7)),   // and comes nearer
+      edge: Math.pow(p, 2.6),                             // the dark spreads out from the shadow, ever faster
+      twist: look.fallTwist * smooth01(p),                // space turns round the hole
+      streak: look.fallStreak * smooth01((p - 0.45) / 0.55),   // light drawn out in the plunge
+      squeeze: 1 + (look.fallSqueeze - 1) * p * p,        // the sky outside is squeezed into a ring
+      dark: smooth01(p / 0.3),                            // what was in the shadow goes out
+      vignette: 0.4 * p,
+      dim: 1 - look.fallDim * smooth01(p / 0.5),           // the eye adjusts to the light
+      shift: 14 * FALL * p * p * p / 3                    // time on the disk runs up to 15 times faster
+    };
+  }
+
+  // How much wider than the screen the scene must be drawn for the fall to
+  // find, at every point of the screen, what it looks at after the twist.
+  function overscan(cx, cy, aspect, shadow, edge, twist, squeeze) {
+    let need = 1;
+    for (let i = 0; i <= 10; i++) {
+      for (let k = 0; k <= 10; k++) {
+        const dx = (i / 10 - cx) * aspect, dy = k / 10 - (1 - cy);
+        const r = Math.hypot(dx, dy) / shadow;
+        if (r <= edge) continue;
+        const s = Math.sqrt((r * r - edge * edge) * squeeze + 1);
+        const turn = -twist * Math.min(1, Math.pow(edge / r, look.fallTwistOut));
+        const c = Math.cos(turn), n = Math.sin(turn);
+        const ux = dx / (r * shadow), uy = dy / (r * shadow);
+        const qx = (c * ux - n * uy) * s * shadow, qy = (n * ux + c * uy) * s * shadow;
+        need = Math.max(need, 2 * Math.abs(cx - 0.5 + qx / aspect), 2 * Math.abs(0.5 - cy + qy));
+      }
+    }
+    return Math.min(1.6, need * 1.03);
+  }
 
   renderer.info.autoReset = false;
-  function render(t) {
+  function render(t, T = -1) {
     clock = t;
     renderer.info.reset();
+    const fall = fallState(T);
+    if (T < 0) {
+      // In the fall the lean stays where it was.
+      lure += ((over ? 1 : 0) - lure) * 0.06;
+      if (!over && lure < 0.002) lure = 0;
+    }
     const idle = !held && t - touched > 9;
     if (idle) {
       // Drift home, slowly.
@@ -1290,7 +1803,21 @@ function start() {
 
     const aspect = bufW / bufH;
     const comp = composition(aspect);
-    const focal = comp.focal * view.zoom;
+    const zoom = view.zoom * (1 + 0.035 * lure) * fall.zoom;
+    const cx = comp.cx + (0.5 - comp.cx) * fall.pull, cy = comp.cy + (0.5 - comp.cy) * fall.pull;
+    // The hole on screen: the radius of its shadow, as a share of the frame
+    // height. In the fall the dark spreads out from it (its edge in shadow
+    // radii); at the end the dark, and the glow along its edge, are past the
+    // farthest corner of the frame.
+    const shadow = 0.5 * comp.focal * tanShadow * zoom;
+    const corner = 0.5 * Math.hypot(aspect, 1) / (shadow / fall.zoom * look.fallNear);
+    const edge = 1 + Math.max(0, 1.15 * corner / (1 - look.fallRim) - 1) * fall.edge;
+    const twist = fall.twist + 0.05 * lure;
+    // The twisted fall looks beyond the edges of the screen, so the scene is
+    // then drawn wider than the screen, by this much.
+    const wide = T < 0 ? 1 : overscan(cx, cy, aspect, shadow, edge, twist, fall.squeeze);
+    const focal = comp.focal * zoom / wide;
+    const sx = 0.5 + (cx - 0.5) / wide, sy = 0.5 + (cy - 0.5) / wide;
     let incl = view.el + (reduced ? 0 : 0.4 * Math.sin(t * 0.05) * deg) - my * 1.2 * deg;
     incl = Math.max(2.5 * deg, Math.min(82 * deg, incl));
     const az = view.az + t * 0.0005 + mx * 2.0 * deg;
@@ -1300,27 +1827,30 @@ function start() {
     camera.lookAt(0, 0, 0);
     camera.fov = 2 * Math.atan(1 / focal) / deg;
     camera.aspect = aspect;
-    camera.setViewOffset(bufW, bufH, (0.5 - comp.cx) * bufW, (0.5 - comp.cy) * bufH, bufW, bufH);
+    camera.setViewOffset(bufW, bufH, (0.5 - sx) * bufW, (0.5 - sy) * bufH, bufW, bufH);
     camera.updateMatrixWorld(true);
     camDir.set(cam.cp[0] / D, cam.cp[1] / D, cam.cp[2] / D);
 
     const pxPerRad = 0.5 * focal * bufH;
-    const pos = planetAt(t);
+    const tDisk = t + fall.shift;
+    const pos = planetAt(tDisk);
     planet.position.set(pos[0], pos[1], pos[2]);
     planet.scale.setScalar(look.planetSize);
     planetMat.uniforms.uPlanet.value.set(pos[0], pos[1], pos[2], look.planetSize);
-    planetMat.uniforms.uTime.value = t;
+    planetMat.uniforms.uTime.value = tDisk;
     skyMat.uniforms.uFog.value.set(look.fog, look.fogR, look.halo, look.haloR);
     skyMat.uniforms.uRing.value = look.ring;
     skyMat.uniforms.uStars.value = look.stars;
     skyMat.uniforms.uPxPerRad.value = pxPerRad;
-    strandMats.forEach(mat => {
-      mat.uniforms.uTime.value = t % 3600;
-      mat.uniforms.uAxis.value.set(Math.atan2(-camDir.z, -camDir.x), Math.abs(camDir.y), Math.sqrt(1 - camDir.y * camDir.y));
-      mat.uniforms.uPxPerRs.value = pxPerRad * sinPerB;
-      mat.uniforms.uStrand.value.set(look.spin, look.pitch, look.minHalf, look.gain * strandCount / strands.instanceCount);
-      mat.uniforms.uShift.value.set(look.doppler, look.dopplerT, look.sat);
-    });
+    gasUniforms.uGasTime.value.set(tDisk % 3600, look.spin, GAS_DRIFT);
+    gasUniforms.uGasBody.value.set(look.gasIn, look.gasOut, look.gasLight, look.gasFall);
+    gasUniforms.uGasDepth.value.set(look.gasDepth, look.gasThin, look.fibre, look.cloud);
+    // Seen almost edge-on, ripples would fold over each other: flatten them.
+    gasUniforms.uGasSheet.value.set(look.gasLift, look.gasFlare, look.hazeH, look.gasWave * Math.max(0, Math.min(1, (Math.sin(incl) - 0.03) / 0.085)));
+    gasUniforms.uGasHeat.value.set(look.gasT, look.gasCool, look.gasHot, 0);
+    gasUniforms.uGasVeil.value.set(look.haze, look.hazeLight, look.dust, look.dustLight);
+    gasUniforms.uGasDust.value.set(look.dustIn, look.doppler, look.dopplerT, look.dustDark);
+    gasUniforms.uGasEmber.value.set(look.emberSlant, look.emberFall, look.emberFar);
 
     // 1. The scene, in linear light.
     renderer.setRenderTarget(sceneRT);
@@ -1329,7 +1859,7 @@ function start() {
     // 2. Glare: the scene blurred into five halos, each about twice as wide
     // as the one before. Their width follows the size of the hole.
     let from = sceneRT;
-    const hole = comp.focal * tanShadow * view.zoom;
+    const hole = comp.focal * tanShadow * zoom / wide;
     for (let k = 0; k < 5; k++) {
       const stride = Math.max(0.3, Math.min(2.2, (k < 4 ? 1.0 : 1.6) * hole * bufH / 423));
       downMat.uniforms.uTex.value = from.texture;
@@ -1352,20 +1882,34 @@ function start() {
     cu.uBloom1.value = glare[0].texture; cu.uBloom2.value = glare[1].texture; cu.uBloom3.value = glare[2].texture;
     cu.uBloom4.value = glare[3].texture; cu.uBloom5.value = glare[4].texture;
     cu.uTime.value = t % 3600;
-    cu.uExposure.value = look.exposure;
+    cu.uExposure.value = look.exposure * fall.dim;
     cu.uGlowA.value.set(look.glow1, look.glow2, look.glow3, look.glow4);
-    cu.uGlowB.value.set(look.glow5, look.white, look.knee, 0);
-    cu.uGrade.value.set(look.vignette, look.grain);
+    cu.uGlowB.value.set(look.glow5, look.white, look.knee, look.burn);
+    cu.uGrade.value.set(look.vignette + fall.vignette, look.grain);
+    cu.uHole.value.set(cx, 1 - cy, shadow, aspect);
+    cu.uFall.value.set(edge, twist, fall.streak, fall.dark);
+    cu.uFall2.value.set(fall.squeeze, look.fallTwistOut, look.fallRim, wide);
     pass(compositeMat, null);
+
+    // Keep the link on the shadow.
+    const cw = canvas.clientWidth || window.innerWidth || 0, ch = canvas.clientHeight || window.innerHeight || 0;
+    const hx = cx * cw, hy = cy * ch, hr = shadow * ch;
+    if (Math.abs(hx - holeX) > 0.5 || Math.abs(hy - holeY) > 0.5 || Math.abs(hr - holeR) > 0.5) {
+      holeX = hx; holeY = hy; holeR = hr;
+      portal.style.setProperty('--x', hx.toFixed(1) + 'px');
+      portal.style.setProperty('--y', hy.toFixed(1) + 'px');
+      portal.style.setProperty('--r', hr.toFixed(1) + 'px');
+    }
   }
 
-  // ---- Loop: at most about 80 frames a second, lighter picture on slow machines ----
+  // ---- Loop: at most about 80 frames a second, fewer pixels on slow machines ----
   const t0 = performance.now();
   let last = 0, lastDraw = 0, shown = false, lost = false;
-  let gaps = [], tuned = 0, quickRuns = 0, limit = strandCount, slowed = false, pace = 0, trial = null, strandsHelp = true;
+  let gaps = [], tuned = 0, pace = 0, trial = null;
   function frame(now) {
     if (lost) return;
     requestAnimationFrame(frame);
+    if (gone) return;                     // gone through to the blog: nothing more to draw
     if (!sceneRT || sizeChanged()) {
       if (!resize()) return;
       last = 0;
@@ -1382,9 +1926,8 @@ function start() {
     lastDraw = now;
     // Fit the picture to the machine. Every 0.6 s the usual time between
     // frames is taken (the median, so one hitch does not count) and compared
-    // with the pace of the screen. At that pace, more strands are drawn.
-    // Well behind it, fewer strands (each one brighter), and in the end
-    // fewer pixels; a count that proved too much is not tried again.
+    // with the pace of the screen. Well behind it, the picture is drawn with
+    // fewer pixels.
     if (!tuned) tuned = now + 500;         // let the first frames settle
     if (now - tuned > 600 && gaps.length > 5) {
       const typical = gaps.sort((a, b) => a - b)[gaps.length >> 1];
@@ -1395,59 +1938,50 @@ function start() {
         // holding a page back that nobody is looking at. Change nothing.
         trial = null;
       } else if (trial) {
-        // Did drawing fewer strands help? If not, and frames still come at
-        // a fair rate, the browser itself holds that rate (a power-saving
-        // mode, a slow screen): take it as the pace and give the strands
-        // back. If frames are slow all the same, it is the pixels that cost.
-        if (typical > 0.9 * trial.typical) {
-          if (typical <= 60) {
-            strands.instanceCount = trial.count;
-            limit = trial.limit;
-            slowed = trial.slowed;
-            pace = typical;
-          } else {
-            strandsHelp = false;
-          }
+        // Did fewer pixels help? If not, and frames still come at a fair
+        // rate, the browser itself holds that rate (a power-saving mode, a
+        // slow screen): take it as the pace and give the pixels back.
+        if (typical > 0.9 * trial.typical && typical <= 60) {
+          quality = trial.quality;
+          pace = typical;
+          resize();
         }
         trial = null;
       } else {
         if (!pace && typical < 24) pace = typical;
         const full = pace || 19;
-        if (typical > 1.5 * full && typical > 26) {
-          quickRuns = 0;
-          if (strandsHelp && strands.instanceCount > strandCount * 0.2) {
-            trial = { count: strands.instanceCount, limit, slowed, typical };
-            limit = Math.min(limit, Math.round(strands.instanceCount * 0.92));
-            strands.instanceCount = Math.round(strands.instanceCount * 0.6);
-          } else if (quality > 0.45) {
-            quality = Math.max(0.45, quality - 0.12);
-            resize();
-          }
-          slowed = true;
-        } else if (typical < 1.25 * full && strands.instanceCount < limit && ++quickRuns >= (slowed ? 5 : 1)) {
-          quickRuns = 0;
-          strands.instanceCount = Math.min(limit, Math.round(strands.instanceCount * 1.3));
+        if (typical > 1.5 * full && typical > 26 && quality > 0.45) {
+          trial = { quality, typical };
+          quality = Math.max(0.45, quality - 0.15);
+          resize();
         }
       }
     }
-    render((now - t0) / 1000);
+    const T = fallAt ? (now - fallAt) / 1000 : -1;
+    render((now - t0) / 1000, T);
     if (!shown) { shown = true; root.classList.add('is-live'); }
+    if (T >= FALL) leave();               // dark: through to the other side
   }
   document.addEventListener('visibilitychange', () => { last = 0; gaps = []; trial = null; });
   canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); lost = true; fail('WebGL context lost'); });
+  glFall = {
+    reset() {
+      held = false; over = false; lure = 0; pending = 240;
+      canvas.classList.remove('is-held');
+      last = 0; gaps = []; trial = null;
+    }
+  };
   requestAnimationFrame(frame);
 
   if (debug) {
     window.__bh = {
-      // A frame drawn through this hook is always the full picture.
-      gl, hdr, isGL2: true, look, quality: () => quality,
-      render: t => { strands.instanceCount = strandCount; render(t); },
+      gl, hdr, isGL2: true, look, quality: () => quality, render, fall: FALL, boot: Math.round(performance.now() - booted),
       // Raw framebuffers, for the render check.
       targets: () => {
         const raw = t => { const p = renderer.properties.get(t); return { fb: p.__webglFramebuffer, ok: !!p.__webglFramebuffer }; };
         return { scene: raw(sceneRT), glare: glare.map(raw), glareTmp: glareTmp.map(raw) };
       },
-      info: () => ({ triangles: renderer.info.render.triangles, calls: renderer.info.render.calls, strands: strands.instanceCount, pace, limit, quality })
+      info: () => ({ triangles: renderer.info.render.triangles, calls: renderer.info.render.calls, pace, quality })
     };
   }
 }
