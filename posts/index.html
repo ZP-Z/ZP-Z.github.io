@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><meta><title>Blog - Zipeng</title><link rel="manifest" href="/manifest.json"><meta name="theme-color" content="#3273dc"><meta name="application-name" content="zpblog"><meta name="msapplication-TileImage" content="/mylogos/favicon.png"><meta name="msapplication-TileColor" content="#3273dc"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="zpblog"><meta name="apple-mobile-web-app-status-bar-style" content="default"><meta property="og:type" content="blog"><meta property="og:title" content="Blog"><meta property="og:url" content="https://zp-z.github.io/posts/index.html"><meta property="og:site_name" content="Zipeng"><meta property="og:locale" content="zh_CN"><meta property="og:image" content="https://zp-z.github.io/img/og_image.png"><meta property="article:published_time" content="2026-11-16T16:35:18.555Z"><meta property="article:modified_time" content="2026-11-16T16:35:18.543Z"><meta property="article:author" content="Zipeng Zhao"><meta property="twitter:card" content="summary"><meta property="twitter:image:src" content="https://zp-z.github.io/img/og_image.png"><script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","mainEntityOfPage":{"@type":"WebPage","@id":"https://zp-z.github.io/posts/index.html"},"headline":"Blog","image":["https://zp-z.github.io/img/og_image.png"],"datePublished":"2026-11-16T16:35:18.555Z","dateModified":"2026-11-16T16:35:18.543Z","author":{"@type":"Person","name":"Zipeng Zhao"},"publisher":{"@type":"Organization","name":"Zipeng","logo":{"@type":"ImageObject","url":"https://zp-z.github.io/mylogos/logo.png"}},"description":""}</script><link rel="canonical" href="https://zp-z.github.io/posts/index.html"><link rel="icon" href="/mylogos/favicon.png"><link rel="stylesheet" href="https://use.fontawesome.com/releases/v6.0.0/css/all.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@9.12.0/styles/atom-one-light.css"><link rel="stylesheet" href="data:text/css,"><link rel="stylesheet" href="/css/default.css"><style>body>.footer,body>.navbar,body>.section{opacity:0}</style><!--!--><!--!--><!--!--><!--!--><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/css/lightgallery.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/css/justifiedGallery.min.css"><!--!--><!--!--><style>.pace{-webkit-pointer-events:none;pointer-events:none;-webkit-user-select:none;-moz-user-select:none;user-select:none}.pace-inactive{display:none}.pace .pace-progress{background:#3273dc;position:fixed;z-index:2000;top:0;right:100%;width:100%;height:2px}</style><script src="https://cdn.jsdelivr.net/npm/pace-js@1.2.4/pace.min.js"></script><!--!--><!--!--><!-- hexo injector head_end start --><script>
+  (function () {
+      function switchTab() {
+          if (!location.hash) {
+            return;
+          }
+
+          const id = '#' + CSS.escape(location.hash.substring(1));
+          const $tabMenu = document.querySelector(`.tabs a[href="${id}"]`);
+          if (!$tabMenu) {
+            return;
+          }
+
+          const $tabMenuContainer = $tabMenu.parentElement.parentElement;
+          Array.from($tabMenuContainer.children).forEach($menu => $menu.classList.remove('is-active'));
+          Array.from($tabMenuContainer.querySelectorAll('a'))
+              .map($menu => document.getElementById($menu.getAttribute("href").substring(1)))
+              .forEach($content => $content.classList.add('is-hidden'));
+
+          if ($tabMenu) {
+              $tabMenu.parentElement.classList.add('is-active');
+          }
+          const $activeTab = document.querySelector(id);
+          if ($activeTab) {
+              $activeTab.classList.remove('is-hidden');
+          }
+      }
+      switchTab();
+      window.addEventListener('hashchange', switchTab, false);
+  })();
+  </script><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;600&family=Source+Code+Pro&display=swap" media="print" onload="this.media='all'"><noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;600&family=Source+Code+Pro&display=swap"></noscript><style>
+/* Put into every page of the blog by scripts/blog.js (the black hole at /
+   is a page of its own and does not get it). */
+
+/* The hometown photo (Jing County, Anhui), faint, behind the page below the
+   navigation bar. The bar, the cards and the footer are white and cover it.
+   Fixed to the window, so a long page does not stretch it. */
+html::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: url(/images/home.jpg) center / cover no-repeat;
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+/* The self-introduction in the profile card, between the place and the
+   icons (scripts/blog.js draws the card). */
+.widget[data-type="profile"] .profile-intro {
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+/* No line above a post's title: date, category and reading time. */
+article.article .article-meta.level {
+  display: none;
+}
+
+/* The article a little wider with both sidebars on screen: 56% of the row
+   instead of 50%, each sidebar 22% instead of 25%. Icarus shows three
+   columns from 1280px (its own "widescreen"); below that, two columns. */
+@media screen and (min-width: 1280px) {
+  .is-3-column .column-main.is-6-widescreen {
+    width: 56%;
+  }
+  .is-3-column .column-left.is-3-widescreen,
+  .is-3-column .column-right.is-3-widescreen {
+    width: 22%;
+  }
+}
+
+/* Large screens (from 1472px, Icarus's "fullhd"): the page grows with the
+   window up to 1600px; the sidebars keep their 300px and the article takes
+   the rest. On a 4K screen the article is about a third wider than at 1344px.
+   Where min() is not known, the theme's 1344px stays. */
+@media screen and (min-width: 1472px) {
+  .is-3-column .container {
+    max-width: min(1600px, calc(100vw - 128px));
+  }
+  .is-3-column .column-left.is-3-widescreen,
+  .is-3-column .column-right.is-3-widescreen {
+    width: 300px;
+  }
+  .is-3-column .column-main.is-6-widescreen {
+    width: calc(100% - 600px);
+  }
+}
+
+/* Phones: five sections, the contents and the search button in one row
+   (the theme lets it scroll sideways when it is too long). */
+@media screen and (max-width: 768px) {
+  .navbar-main .navbar-menu .navbar-item {
+    padding-left: 0.375rem;
+    padding-right: 0.375rem;
+  }
+}
+
+/* The name on one line in the narrower profile card (it broke after
+   "Zipeng" at 1280-1471px while the web font was not loaded). */
+.widget[data-type="profile"] p.title {
+  white-space: nowrap;
+}
+
+/* Previous / next post links sit on the photo under the article card. */
+.post-navigation {
+  color: #4a4a4a;
+}
+
+/* Research: one paper per row, its picture on the left and the title,
+   authors and venue on the right ({% paper %} in scripts/blog.js). Phones
+   put the picture on top. */
+.content .paper {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.5rem;
+  margin-bottom: 1.75rem;
+}
+.content .paper-image {
+  flex: none;
+  width: clamp(160px, 38%, 300px);
+}
+.content .paper-image a,
+.content .paper-image img {
+  display: block;
+  width: 100%;
+}
+.content .paper-image img {
+  border-radius: 4px;
+}
+.content .paper-text {
+  flex: 1;
+  min-width: 0;
+}
+.content .paper-text p {
+  margin: 0;
+}
+@media screen and (max-width: 768px) {
+  .content .paper {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .content .paper-image {
+    width: 100%;
+  }
+}
+
+/* The posts of a section (Research, Projects) under the section's text. */
+.content .section-posts {
+  list-style: none;
+  margin: 1.5rem 0 0;
+}
+.content .section-posts li {
+  margin: 0;
+  padding: 0.6rem 0;
+  border-top: 1px solid #ededed;
+}
+</style><!-- hexo injector head_end end --><meta name="generator" content="Hexo 7.0.0"></head><body class="is-3-column"><nav class="navbar navbar-main"><div class="container navbar-container"><div class="navbar-brand justify-content-center"><a class="navbar-item navbar-logo" href="/"><img src="/mylogos/logo.png" alt="Zipeng" height="28"></a></div><div class="navbar-menu"><div class="navbar-start"><a class="navbar-item" href="/">Home</a><a class="navbar-item" href="/research/">Research</a><a class="navbar-item" href="/projects/">Projects</a><a class="navbar-item is-active" href="/posts/">Blog</a><a class="navbar-item" href="/categories">Categories</a></div><div class="navbar-end"><a class="navbar-item search" title="搜索" href="javascript:;"><i class="fas fa-search"></i></a></div></div></div></nav><section class="section"><div class="container"><div class="columns"><div class="column order-2 column-main is-8-tablet is-8-desktop is-6-widescreen"><div class="card"><article class="card-content article" role="article"><h1 class="title is-3 is-size-4-mobile">Blog</h1><div class="content"></div><!--!--><!--!--></article></div><!--!--><!--!--></div><div class="column column-left is-4-tablet is-4-desktop is-3-widescreen  order-1"><div class="card widget" data-type="profile"><div class="card-content"><nav class="level"><div class="level-item has-text-centered flex-shrink-1"><div><figure class="image is-128x128 mx-auto mb-2"><img class="avatar" src="/mylogos/leo.png" alt="赵子朋 Zipeng Zhao"></figure><p class="title is-size-4 is-block" style="line-height:inherit;">赵子朋 Zipeng Zhao</p><p class="is-size-6 is-flex justify-content-center"><i class="fas fa-map-marker-alt mr-1"></i><span>Shanghai, China</span></p></div></div></nav><div class="content profile-intro"><p>Physics engine engineer. I work on real-time cloth simulation and parallel computing for games in Unreal Engine.</p></div><div class="level is-mobile is-multiline"><a class="level-item button is-transparent is-marginless" target="_blank" rel="noopener" title="Github" href="https://github.com/ZP-Z"><i class="fab fa-github"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="noopener" title="Research Gate" href="https://www.researchgate.net/profile/Zipeng_Zhao3"><i class="fab fa-researchgate"></i></a><a class="level-item button is-transparent is-marginless" target="_blank" rel="noopener" title="LinkedIn" href="https://www.linkedin.com/in/%E5%AD%90%E6%9C%8B-%E8%B5%B5-ab810b11a/"><i class="fab fa-linkedin"></i></a></div></div></div><!--!--><div class="column-right-shadow is-hidden-widescreen"></div></div><div class="column column-right is-4-tablet is-4-desktop is-3-widescreen is-hidden-touch is-hidden-desktop-only order-3"><div class="card widget" data-type="categories"><div class="card-content"><div class="menu"><h3 class="menu-label">分类</h3><ul class="menu-list"><li><a class="level is-mobile" href="/categories/Me/"><span class="level-start"><span class="level-item">Me</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li><li><a class="level is-mobile" href="/categories/Research/"><span class="level-start"><span class="level-item">Research</span></span><span class="level-end"><span class="level-item tag">1</span></span></a></li></ul></div></div></div><div class="card widget" data-type="recent-posts"><div class="card-content"><h3 class="menu-label">文章</h3><article class="media"><figure class="media-left"><a class="image" href="/2019/11/02/AboutME/"><img src="/images/home.jpg" alt="About Me"></a></figure><div class="media-content"><p class="date"><time dateTime="2019-11-02T06:49:36.000Z">2019-11-02</time></p><p class="title"><a href="/2019/11/02/AboutME/">About Me</a></p><p class="categories"><a href="/categories/Me/">Me</a></p></div></article><article class="media"><figure class="media-left"><a class="image" href="/2020/07/01/interests/"><img src="/images/IMG_1546.JPG" alt="Painting"></a></figure><div class="media-content"><p class="date"><time dateTime="2020-07-01T02:10:36.000Z">2020-07-01</time></p><p class="title"><a href="/2020/07/01/interests/">Painting</a></p></div></article><article class="media"><figure class="media-left"><a class="image" href="/2020/06/23/MPM/"><img src="/images/torus.png" alt="Material Point Method"></a></figure><div class="media-content"><p class="date"><time dateTime="2020-06-23T05:57:43.000Z">2020-06-23</time></p><p class="title"><a href="/2020/06/23/MPM/">Material Point Method</a></p><p class="categories"><a href="/categories/Research/">Research</a></p></div></article></div></div></div></div></div></section><footer class="footer"><div class="container"><div class="level"><div class="level-start"><a class="footer-logo is-block mb-2" href="/"><img src="/mylogos/logo.png" alt="Zipeng" height="28"></a><p class="is-size-7"><span>&copy; 2026 Zipeng Zhao</span>  Powered by <a href="https://hexo.io/" target="_blank" rel="noopener">Hexo</a> &amp; <a href="https://github.com/ppoffice/hexo-theme-icarus" target="_blank" rel="noopener">Icarus</a></p></div><div class="level-end"><div class="field has-addons"><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Creative Commons" href="https://creativecommons.org/"><i class="fab fa-creative-commons"></i></a></p><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Attribution 4.0 International" href="https://creativecommons.org/licenses/by/4.0/"><i class="fab fa-creative-commons-by"></i></a></p><p class="control"><a class="button is-transparent is-large" target="_blank" rel="noopener" title="Download on GitHub" href="https://github.com/ppoffice/hexo-theme-icarus"><i class="fab fa-github"></i></a></p></div></div></div></div></footer><script src="https://cdn.jsdelivr.net/npm/jquery@3.3.1/dist/jquery.min.js"></script><script src="https://cdn.jsdelivr.net/npm/moment@2.22.2/min/moment-with-locales.min.js"></script><script src="https://cdn.jsdelivr.net/npm/clipboard@2.0.4/dist/clipboard.min.js" defer></script><script>moment.locale("zh-cn");</script><script>var IcarusThemeSettings = {
+            article: {
+                highlight: {
+                    clipboard: true,
+                    fold: 'unfolded'
+                }
+            }
+        };</script><script src="/js/column.js"></script><script src="/js/animation.js"></script><a id="back-to-top" title="回到顶端" href="javascript:;"><i class="fas fa-chevron-up"></i></a><script src="/js/back_to_top.js" defer></script><!--!--><!--!--><!--!--><script src="https://cdn.jsdelivr.net/npm/lightgallery@1.10.0/dist/js/lightgallery.min.js" defer></script><script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.8.1/dist/js/jquery.justifiedGallery.min.js" defer></script><script>window.addEventListener("load", () => {
+            if (typeof $.fn.lightGallery === 'function') {
+                $('.article').lightGallery({ selector: '.gallery-item' });
+            }
+            if (typeof $.fn.justifiedGallery === 'function') {
+                if ($('.justified-gallery > p > .gallery-item').length) {
+                    $('.justified-gallery > p > .gallery-item').unwrap();
+                }
+                $('.justified-gallery').justifiedGallery();
+            }
+        });</script><!--!--><!--!--><!--!--><!--!--><!--!--><script src="/js/main.js" defer></script><div class="searchbox"><div class="searchbox-container"><div class="searchbox-header"><div class="searchbox-input-container"><input class="searchbox-input" type="text" placeholder="想要查找什么..."></div><a class="searchbox-close" href="javascript:;">×</a></div><div class="searchbox-body"></div></div></div><script src="/js/insight.js" defer></script><script>document.addEventListener('DOMContentLoaded', function () {
+            loadInsight({"contentUrl":"/content.json"}, {"hint":"想要查找什么...","untitled":"(无标题)","posts":"文章","pages":"页面","categories":"分类","tags":"标签"});
+        });</script></body></html>
