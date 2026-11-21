@@ -2,6 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <link rel="modulepreload" href="./vendor/three-0.170.0.module.min.js">
+  <link rel="modulepreload" href="./vendor/black-hole-tables.js">
+  <link rel="prefetch" href="/fonts/ubuntu/latin.woff2" as="font" type="font/woff2" crossorigin>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
   <meta name="color-scheme" content="dark">
@@ -15,7 +18,7 @@
       --void: #0a1416;
       --ink: 248, 240, 226;
       /* Apparent radius of the shadow; the fallback is drawn in these units. */
-      --rs: min(23.5vh, 25vw);
+      --rs: min(35vh, 34vw);
     }
 
     * {
@@ -47,7 +50,7 @@
       width: 100%;
       height: 100%;
       opacity: 0;
-      transition: opacity 2.4s cubic-bezier(0.22, 0.61, 0.36, 1);
+      transition: opacity 0.6s cubic-bezier(0.22, 0.61, 0.36, 1);
       cursor: grab;
       touch-action: none;
     }
@@ -112,19 +115,18 @@
       height: calc(var(--rs) * 4.4);
       border-radius: 50%;
       background: radial-gradient(circle closest-side,
-        #a3b3b8 0, #b4c0c2 40%,
-        #fff0d2 45.2%,
-        #d9cdb6 47%,
-        #ffeccb 50%, #ffe8c4 62%,
-        rgba(246, 184, 138, 0.86) 70%,
-        rgba(206, 112, 66, 0.42) 82%,
-        rgba(96, 48, 30, 0) 100%);
+        #778e90 0, #8e9f9c 39%, #b4bbac 44%,
+        #fff0d2 45.4%, #b6bcab 46.3%, #a4afa2 48%,
+        #c8c8b0 51%, #f1e6c7 53.5%, #fff1d4 55%, #ffe8c4 58%,
+        rgba(246, 184, 138, 0.86) 63%,
+        rgba(206, 112, 66, 0.42) 71%,
+        rgba(96, 48, 30, 0) 82%);
     }
 
     .fallback-blade {
-      top: 51.2%;
+      top: 50.8%;
       width: 100%;
-      height: calc(var(--rs) * 0.62);
+      height: calc(var(--rs) * 0.32);
       background: linear-gradient(90deg,
         rgba(70, 36, 22, 0) 12%,
         rgba(150, 74, 40, 0.75) 23%,
@@ -151,7 +153,7 @@
       max-width: min(520px, 84vw);
       pointer-events: none;
       text-shadow: 0 1px 24px rgba(0, 0, 0, 0.9);
-      animation: caption-in 2s cubic-bezier(0.22, 0.61, 0.36, 1) 1.1s both;
+      animation: caption-in 0.6s cubic-bezier(0.22, 0.61, 0.36, 1) both;
     }
 
     .caption-title {
@@ -174,7 +176,7 @@
     }
 
     @keyframes caption-in {
-      from { opacity: 0; transform: translateY(10px); }
+      from { opacity: 0.5; transform: translateY(6px); }
       to { opacity: 1; transform: none; }
     }
 
@@ -257,9 +259,6 @@
       .fallback { display: block; }
     </style>
   </noscript>
-  <script type="importmap">
-    { "imports": { "three": "./vendor/three-0.170.0.module.min.js" } }
-  </script>
 </head>
 <body>
   <canvas id="gargantua" aria-hidden="true"></canvas>
@@ -288,7 +287,11 @@
   </script>
 
   <script type="module">
-import * as THREE from 'three';
+import * as THREE from './vendor/three-0.170.0.module.min.js';
+import {
+  buildTables, B_CRIT, LUT_W, LUT_H, PSI_MAX, R_MIN, R_MAX, SKY_W, SKY_L0, SKY_L1,
+  RAY_W, RAY_H, RAY_PSI, RAY_B, RAY_EPS, RAY_X0, RAY_LA, RAY_LB, GAS_W, GAS_H
+} from './vendor/black-hole-tables.js';
 
 // The disk is not a picture on a plane. It is gas in space: two thin sheets
 // of glowing fibres, one a little above the plane of the disk and one a
@@ -324,7 +327,7 @@ const FALL = 2.6;         // seconds from the tap to darkness
 let fallAt = 0;           // when the fall began (performance.now()); 0 while there is none
 let glFall = null;        // the drawn fall, once the picture is live
 let gone = false, prepared = null, backstop = 0;
-const drawn = () => !!glFall && !root.classList.contains('no-webgl');
+const drawn = () => !!glFall && root.classList.contains('is-live') && !root.classList.contains('no-webgl');
 // Load the blog while the fall is under way: drawn in advance where the
 // browser can, else at least fetched.
 function prepare() {
@@ -355,7 +358,8 @@ function enter() {
   if (fallAt) return;
   fallAt = performance.now();
   prepare();
-  if (reduced) {
+  // An early click can leave while the first frame is still being prepared.
+  if (reduced || (!drawn() && !root.classList.contains('no-webgl'))) {
     root.classList.add('is-leaving');
     backstop = setTimeout(leave, 350);
     return;
@@ -388,12 +392,12 @@ const look = {
   // the disk axis, position of the hole, diameter of its shadow as a share
   // of the frame height. Then the same for a tall frame, where the diameter
   // is a share of the width.
-  dist: 60, incl: 7.2, roll: -21, cx: 0.745, cy: 0.42, hole: 0.47,
-  rollTall: -34, cxTall: 0.60, cyTall: 0.36, holeTall: 0.50,
+  dist: 60, incl: 5.8, roll: -21, cx: 0.745, cy: 0.42, hole: 0.70,
+  rollTall: -34, cxTall: 0.60, cyTall: 0.36, holeTall: 0.68,
   // Gas, the body of the disk: inner and outer radius; brightness of its
   // surface at radius 3 and how fast that falls outward; depth of the gas
   // seen from straight above at radius 3, and how fast it thins outward.
-  gasIn: 1.9, gasOut: 10.5, gasLight: 7, gasFall: 2.6, gasDepth: 0.6, gasThin: 1.6,
+  gasIn: 2.39, gasOut: 8.2, gasLight: 7, gasFall: 5.2, gasDepth: 0.6, gasThin: 1.6,
   // Its two sheets: height above and below the plane (rs), growth of that
   // with radius, size of the ripples; contrast of the fibres and of the
   // clouds. Temperature at radius 3 (K), cooling outward, extra heat of the
@@ -411,11 +415,11 @@ const look = {
   spin: 1.25, doppler: 0.12, dopplerT: 0.5,
   // Thin glowing gas around the hole: brightness and radius of a dense core,
   // then of a wide halo; brightness of the photon ring.
-  fog: 0.03, fogR: 2.8, halo: 0.015, haloR: 5.5, ring: 1.6,
+  fog: 0.17, fogR: 3.0, halo: 0.015, haloR: 5.5, ring: 1.6,
   // Camera response: exposure, share of the light in each of five halos
   // (tightest first), white level, sharpness of the shoulder, brightness at
   // which a colour is half burnt out to white, vignette, grain.
-  exposure: 1.55, glow1: 0.06, glow2: 0.08, glow3: 0.10, glow4: 0.07, glow5: 0.08,
+  exposure: 1.55, glow1: 0.06, glow2: 0.08, glow3: 0.10, glow4: 0.04, glow5: 0.11,
   white: 1.0, knee: 3.5, burn: 2.5, vignette: 0.5, grain: 1.2,
   // Stars. Planet: orbit radius, tilt, where the orbit crosses the disk
   // plane, where the planet starts on it, size.
@@ -437,273 +441,11 @@ if (debug) {
   }
 }
 
-// ---- Paths of light around the hole (Schwarzschild, rs = 1) ----
-// A ray is described in its own plane by u = 1/r as a function of the angle
-// psi swept around the hole, counted from the direction of the camera:
-// u'' = 1.5 u^2 - u.
 const D = look.dist;
-const B_CRIT = 1.5 * Math.sqrt(3);      // rays with a smaller impact parameter are captured
-const LUT_W = 768, LUT_H = 96;          // angle x radius
-const PSI_MAX = 3 * Math.PI;
-const R_MIN = 1.55, R_MAX = 24;
-const SKY_W = 512, SKY_L0 = Math.log(1e-5), SKY_L1 = Math.log(38);
-// The ray table: impact parameter x angle. Its columns crowd around the
-// critical impact parameter, where a ray is most sensitive.
-const RAY_W = 512, RAY_H = 384, RAY_PSI = 2.3 * Math.PI;
-const RAY_B = 24, RAY_EPS = 0.002, RAY_X0 = 0.3;
-const RAY_LA = Math.log(1 + (RAY_B - B_CRIT) / RAY_EPS), RAY_LB = Math.log(1 + B_CRIT / RAY_EPS);
-// The gas texture: one turn of the disk wide, 1 / GAS_VS e-folds of radius
-// tall. GAS_PT is how many tiles a fibre climbs in one turn (it trails).
-// The gas turns in lanes, LANE e-folds of radius wide.
-const GAS_W = 512, GAS_H = 512, GAS_VS = 1.3, GAS_PT = 1;
+// One texture tile spans a full turn and 1 / GAS_VS e-folds of radius.
+// GAS_PT is the radial advance of a fibre on each turn.
+const GAS_VS = 1.3, GAS_PT = 1;
 const LANE = 0.085, LANE_S0 = 0.45, GAS_DRIFT = 6 / 3600;
-
-// Follows the ray with impact parameter `b` from the camera. Calls
-// onCross(j, psi, outgoing) each time it crosses radius rj[j], and returns
-// the angle of closest approach (or -1 if the hole captures it).
-function shoot(b, uj, onCross, psiStop) {
-  let u = 1 / D, psi = 0;
-  let v = Math.sqrt(Math.max(1 / (b * b) - u * u * (1 - u), 0));
-  const h = Math.min(0.003, 0.004 * b);
-  const H = uj.length;
-  let jIn = H - 1, jOut = H, outgoing = false, apex = -1;
-  for (let n = 0; n < 400000; n++) {
-    const k1v = 1.5 * u * u - u;
-    const u2 = u + 0.5 * h * v, v2 = v + 0.5 * h * k1v;
-    const k2v = 1.5 * u2 * u2 - u2;
-    const u3 = u + 0.5 * h * v2, v3 = v + 0.5 * h * k2v;
-    const k3v = 1.5 * u3 * u3 - u3;
-    const u4 = u + h * v3, v4 = v + h * k3v;
-    const k4v = 1.5 * u4 * u4 - u4;
-    const un = u + h / 6 * (v + 2 * v2 + 2 * v3 + v4);
-    const vn = v + h / 6 * (k1v + 2 * k2v + 2 * k3v + k4v);
-    if (!outgoing) {
-      while (jIn >= 0 && un >= uj[jIn]) { onCross(jIn, psi + h * (uj[jIn] - u) / (un - u), false); jIn--; }
-      if (vn < 0) {
-        outgoing = true;
-        apex = psi + h * v / (v - vn);
-        jOut = jIn + 1;
-      }
-    }
-    if (outgoing) {
-      while (jOut < H && un <= uj[jOut]) { onCross(jOut, psi + h * (uj[jOut] - u) / (un - u), true); jOut++; }
-      if (jOut >= H) break;
-    }
-    u = un; v = vn; psi += h;
-    if (u > 0.985 || psi > psiStop) break;
-  }
-  return apex;
-}
-
-// Interpolates y(x) through points with increasing x (cubic Hermite).
-function hermite(xs, ys, n, x, hint) {
-  let k = hint[0];
-  while (k < n - 2 && xs[k + 1] < x) k++;
-  while (k > 0 && xs[k] > x) k--;
-  hint[0] = k;
-  const x0 = xs[k], x1 = xs[k + 1], y0 = ys[k], y1 = ys[k + 1];
-  const dx = x1 - x0;
-  if (dx <= 0) return y0;
-  const m0 = k > 0 ? (y1 - ys[k - 1]) / (x1 - xs[k - 1]) : (y1 - y0) / dx;
-  const m1 = k < n - 2 ? (ys[k + 2] - y0) / (xs[k + 2] - x0) : (y1 - y0) / dx;
-  const t = Math.min(Math.max((x - x0) / dx, 0), 1), t2 = t * t, t3 = t2 * t;
-  return (2 * t3 - 3 * t2 + 1) * y0 + (t3 - 2 * t2 + t) * dx * m0 + (-2 * t3 + 3 * t2) * y1 + (t3 - t2) * dx * m1;
-}
-
-// The lens table. For a point at radius r whose direction from the hole
-// makes the angle psi with the direction to the camera, it gives the impact
-// parameter b of the ray that reaches it, and how b changes with psi and r.
-// psi up to pi is the direct image; from pi to 2 pi the light went round the
-// far side of the hole.
-function buildLens() {
-  const rj = new Float64Array(LUT_H), uj = new Float64Array(LUT_H);
-  for (let j = 0; j < LUT_H; j++) { rj[j] = R_MIN * Math.pow(R_MAX / R_MIN, j / (LUT_H - 1)); uj[j] = 1 / rj[j]; }
-  const inc = [], out = [];
-  for (let j = 0; j < LUT_H; j++) { inc.push([]); out.push([]); }
-  const stop = PSI_MAX + 0.4;
-  const run = b => shoot(b, uj, (j, psi, outgoing) => (outgoing ? out : inc)[j].push(b, psi), stop);
-  const bTop = R_MAX / Math.sqrt(1 - 1 / R_MAX) * 1.002;
-  for (let k = 1; k <= 900; k++) run(bTop * k / 900);
-  for (let k = 0; k <= 112; k++) { const d = Math.pow(10, -k / 16); run(B_CRIT + d); run(B_CRIT - d); }
-  // The ray that just touches each radius marks where the two branches meet.
-  const apexB = new Float64Array(LUT_H), apexPsi = new Float64Array(LUT_H);
-  for (let j = 0; j < LUT_H; j++) {
-    apexB[j] = rj[j] / Math.sqrt(1 - 1 / rj[j]);
-    apexPsi[j] = shoot(apexB[j] * (1 - 1e-9), uj, () => {}, stop);
-  }
-
-  const B = new Float64Array(LUT_W * LUT_H);
-  const xs = new Float64Array(2400), ys = new Float64Array(2400), hint = [0];
-  for (let j = 0; j < LUT_H; j++) {
-    const a = [], pin = inc[j], pout = out[j];
-    for (let k = 0; k < pin.length; k += 2) if (pin[k] < apexB[j]) a.push([pin[k + 1], pin[k]]);
-    a.push([apexPsi[j], apexB[j]]);
-    for (let k = 0; k < pout.length; k += 2) if (pout[k] < apexB[j]) a.push([pout[k + 1], pout[k]]);
-    a.sort((p, q) => p[0] - q[0]);
-    let n = 0;
-    xs[n] = 0; ys[n] = 0; n++;
-    for (const p of a) if (p[0] > xs[n - 1] + 1e-7) { xs[n] = p[0]; ys[n] = p[1]; n++; }
-    hint[0] = 0;
-    for (let i = 0; i < LUT_W; i++) {
-      const psi = PSI_MAX * i / (LUT_W - 1);
-      B[j * LUT_W + i] = psi >= xs[n - 1] ? ys[n - 1] : hermite(xs, ys, n, psi, hint);
-    }
-  }
-  const data = new Float32Array(LUT_W * LUT_H * 4);
-  const dpsi = PSI_MAX / (LUT_W - 1);
-  for (let j = 0; j < LUT_H; j++) {
-    const j0 = Math.max(j - 1, 0), j1 = Math.min(j + 1, LUT_H - 1);
-    for (let i = 0; i < LUT_W; i++) {
-      const i0 = Math.max(i - 1, 0), i1 = Math.min(i + 1, LUT_W - 1);
-      const o = (j * LUT_W + i) * 4;
-      data[o] = B[j * LUT_W + i];
-      data[o + 1] = (B[j * LUT_W + i1] - B[j * LUT_W + i0]) / ((i1 - i0) * dpsi);
-      data[o + 2] = (B[j1 * LUT_W + i] - B[j0 * LUT_W + i]) / (rj[j1] - rj[j0]);
-      data[o + 3] = 0;
-    }
-  }
-  const tex = new THREE.DataTexture(data, LUT_W, LUT_H, THREE.RGBAFormat, THREE.FloatType);
-  tex.needsUpdate = true;
-  return tex;
-}
-
-// The sky table: the direction a ray ends up travelling in, as an angle
-// around the hole from the direction of the camera, against its impact
-// parameter. Without a hole the angle would be pi minus the angle of view.
-function buildSky() {
-  const data = new Float32Array(SKY_W * 4);
-  const far = [1 / 400];
-  for (let i = 0; i < SKY_W; i++) {
-    const b = B_CRIT + Math.exp(SKY_L0 + (SKY_L1 - SKY_L0) * i / (SKY_W - 1));
-    let psiFar = -1;
-    shoot(b, far, (j, psi, outgoing) => { if (outgoing) psiFar = psi; }, 40);
-    data[i * 4] = psiFar < 0 ? 40 : psiFar + Math.asin(Math.min(b / 400 * Math.sqrt(1 - 1 / 400), 1));
-  }
-  const tex = new THREE.DataTexture(data, SKY_W, 1, THREE.RGBAFormat, THREE.FloatType);
-  tex.needsUpdate = true;
-  return tex;
-}
-
-// The ray table. For the line of sight with impact parameter b it gives
-// u = 1/r at the angle psi it has swept around the hole, and how fast u
-// changes with psi. The gas is drawn with it: it tells where a line of
-// sight meets the disk, and at what slant.
-function buildRays() {
-  const data = new Float32Array(RAY_W * RAY_H * 2);
-  const sub = 8, h = RAY_PSI / ((RAY_H - 1) * sub);
-  for (let i = 0; i < RAY_W; i++) {
-    const x = i / (RAY_W - 1);
-    const b = Math.max(x >= RAY_X0
-      ? B_CRIT + RAY_EPS * (Math.exp((x - RAY_X0) / (1 - RAY_X0) * RAY_LA) - 1)
-      : B_CRIT - RAY_EPS * (Math.exp((RAY_X0 - x) / RAY_X0 * RAY_LB) - 1), 1e-3);
-    let u = 1 / D, v = Math.sqrt(Math.max(1 / (b * b) - u * u * (1 - u), 0)), done = false;
-    for (let j = 0; j < RAY_H; j++) {
-      // Stored times b: for a line of sight aimed almost at the hole u goes
-      // as 1/b, and the product is what changes evenly between columns.
-      const o = (j * RAY_W + i) * 2;
-      data[o] = u * b; data[o + 1] = v * b;
-      for (let n = 0; n < sub && !done; n++) {
-        const k1 = 1.5 * u * u - u;
-        const u2 = u + 0.5 * h * v, v2 = v + 0.5 * h * k1;
-        const k2 = 1.5 * u2 * u2 - u2;
-        const u3 = u + 0.5 * h * v2, v3 = v + 0.5 * h * k2;
-        const k3 = 1.5 * u3 * u3 - u3;
-        const u4 = u + h * v3, v4 = v + h * k3;
-        const k4 = 1.5 * u4 * u4 - u4;
-        u += h / 6 * (v + 2 * v2 + 2 * v3 + v4);
-        v += h / 6 * (k1 + 2 * k2 + 2 * k3 + k4);
-        // Past the horizon, or gone back out to the far sky: the ray is over.
-        if (u > 3) { u = 3; v = 0; done = true; }
-        if (u < -0.05) { u = -0.05; v = 0; done = true; }
-      }
-    }
-  }
-  const tex = new THREE.DataTexture(data, RAY_W, RAY_H, THREE.RGFormat, THREE.FloatType);
-  tex.needsUpdate = true;
-  return tex;
-}
-
-function mulberry(seed) {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6D2B79F5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-// The gas texture. Red and green: long fibres, for the two sheets of the
-// disk. Blue: short tufts. Alpha: large clouds. A fibre is long along the
-// flow (across the texture) and thin across it, and it wanders a little.
-function buildGas() {
-  const rand = mulberry(40977);
-  // Smooth noise on a grid of cx by cy cells that repeats at the edges.
-  const grid = (cx, cy) => {
-    const g = new Float32Array(cx * cy);
-    for (let i = 0; i < g.length; i++) g[i] = rand();
-    return (x, y) => {
-      const fx = x * cx, fy = y * cy;
-      const ix = Math.floor(fx), iy = Math.floor(fy);
-      let tx = fx - ix, ty = fy - iy;
-      tx = tx * tx * (3 - 2 * tx); ty = ty * ty * (3 - 2 * ty);
-      const x0 = ((ix % cx) + cx) % cx, x1 = (x0 + 1) % cx, y0 = ((iy % cy) + cy) % cy, y1 = (y0 + 1) % cy;
-      const a = g[y0 * cx + x0], b = g[y0 * cx + x1], c = g[y1 * cx + x0], d = g[y1 * cx + x1];
-      return a + (b - a) * tx + (c - a) * ty + (a - b - c + d) * tx * ty;
-    };
-  };
-  // Several grids, each twice as fine as the one before. `ridge` turns part
-  // of each into thin bright lines.
-  const stack = (cx, cy, octaves, gain, ridge) => {
-    const layers = [];
-    for (let k = 0; k < octaves; k++) layers.push(grid(cx << k, cy << k));
-    return (x, y) => {
-      let v = 0, a = 1, norm = 0;
-      for (let k = 0; k < octaves; k++) {
-        const n = layers[k](x, y);
-        v += a * (n + ridge * (1 - Math.abs(2 * n - 1) - n));
-        norm += a; a *= gain;
-      }
-      return v / norm;
-    };
-  };
-  const fibreA = stack(8, 16, 5, 0.8, 0.4), fibreB = stack(8, 16, 5, 0.8, 0.4);
-  const tufts = stack(32, 8, 3, 0.75, 0.3), clouds = stack(8, 4, 4, 0.6, 0);
-  const bendA = grid(7, 3), bendB = grid(9, 4), ripple = grid(18, 9), kinkA = grid(48, 20), kinkB = grid(56, 24);
-  const N = GAS_W * GAS_H;
-  const ch = [new Float32Array(N), new Float32Array(N), new Float32Array(N), new Float32Array(N)];
-  for (let j = 0; j < GAS_H; j++) {
-    const y = (j + 0.5) / GAS_H;
-    for (let i = 0; i < GAS_W; i++) {
-      const x = (i + 0.5) / GAS_W, o = j * GAS_W + i;
-      const rp = 0.012 * (ripple(x, y) - 0.5);
-      const ya = y + 0.05 * (bendA(x, y) - 0.5) + rp + 0.006 * (kinkA(x, y) - 0.5);
-      const yb = y + 0.05 * (bendB(x, y) - 0.5) - rp + 0.006 * (kinkB(x, y) - 0.5);
-      ch[0][o] = fibreA(x, ya);
-      ch[1][o] = fibreB(x, yb);
-      ch[2][o] = tufts(x, 0.5 * (ya + yb));
-      ch[3][o] = clouds(x, y + 0.5 * (ya - y));
-    }
-  }
-  // Every channel is spread to the same mean and contrast.
-  const data = new Uint8Array(N * 4);
-  for (let c = 0; c < 4; c++) {
-    let m = 0, q = 0;
-    for (let o = 0; o < N; o++) m += ch[c][o];
-    m /= N;
-    for (let o = 0; o < N; o++) q += (ch[c][o] - m) * (ch[c][o] - m);
-    const k = 0.17 / Math.sqrt(q / N);
-    for (let o = 0; o < N; o++) data[o * 4 + c] = Math.max(0, Math.min(255, Math.round(255 * (0.5 + (ch[c][o] - m) * k))));
-  }
-  const tex = new THREE.DataTexture(data, GAS_W, GAS_H, THREE.RGBAFormat, THREE.UnsignedByteType);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.magFilter = THREE.LinearFilter;
-  tex.minFilter = THREE.LinearMipmapLinearFilter;
-  tex.generateMipmaps = true;
-  tex.needsUpdate = true;
-  return tex;
-}
 
 // ---- Shaders ----
 const GLSL_COMMON = /* glsl */`
@@ -857,7 +599,10 @@ vec2 rayAt(float b, float psi) {
   float x = d >= 0.0 ? RAY_X0 + (1.0 - RAY_X0) * log(1.0 + d / RAY_EPS) / RAY_LA
                      : RAY_X0 - RAY_X0 * log(1.0 - d / RAY_EPS) / RAY_LB;
   float fx = clamp(x, 0.0, 1.0) * float(RAY_W - 1);
-  float fy = clamp(psi / RAY_PSI, 0.0, 1.0) * float(RAY_H - 1);
+  // Invert the per-column angular spacing used by buildRays.
+  float scale = sqrt(1.0 + b * b);
+  float safeB = max(b, 1e-3);
+  float fy = clamp(psi * scale / (RAY_PSI * safeB), 0.0, 1.0) * float(RAY_H - 1);
   ivec2 i0 = ivec2(int(fx), int(fy));
   ivec2 i1 = min(i0 + 1, ivec2(RAY_W - 1, RAY_H - 1));
   vec2 f = vec2(fx, fy) - vec2(i0);
@@ -865,7 +610,7 @@ vec2 rayAt(float b, float psi) {
   vec2 p10 = texelFetch(uRays, ivec2(i1.x, i0.y), 0).rg;
   vec2 p01 = texelFetch(uRays, ivec2(i0.x, i1.y), 0).rg;
   vec2 p11 = texelFetch(uRays, i1, 0).rg;
-  return mix(mix(p00, p10, f.x), mix(p01, p11, f.x), f.y) / max(b, 1e-3);
+  return mix(mix(p00, p10, f.x), mix(p01, p11, f.x), f.y) / vec2(scale, safeB);
 }
 
 // How far a step across the screen moves over the gas texture.
@@ -916,7 +661,10 @@ vec3 gasGlow(float r, float heat, float g) {
   // Colour of a hot body, with its strongest channel at 1. The hottest gas
   // is a warm white: bluer, and its glare would turn the whole picture cold.
   vec3 c = exp(vec3(0.0, -4374.0, -10680.0) * (1.0 / clamp(temp, 1000.0, 6000.0) - 1.0 / 6500.0));
-  return c * (uGasBody.z * pow(r / 3.0, -uGasBody.w) * pow(g, 4.0 * uGasDust.y));
+  // At grazing angles even a thin sheet becomes opaque. Ramp its emitted
+  // light up from the inner edge as well, so the brightest gas sits farther out.
+  float innerLight = mix(0.12, 1.0, smoothstep(uGasBody.x - 0.20, uGasBody.x + 0.85, r));
+  return c * (innerLight * uGasBody.z * pow(r / 3.0, -uGasBody.w) * pow(g, 4.0 * uGasDust.y));
 }
 
 // One slice of the veil at the point Q.
@@ -931,13 +679,13 @@ void veil(inout vec3 L, inout float T, vec3 Q, float share, float slant, float l
 // slope there. A sheet is not flat: it is bent as a whole and rippled, each
 // sheet in its own way, so the two weave through each other and the fibres
 // cross at small angles.
-vec3 sheetHeight(int which, vec2 g) {
+vec3 sheetHeight(int which, vec2 g, float ripple) {
   float r = max(length(g), 1.0);
   float lr = log(r), phi = atan(g.y, g.x);
   float side = which == 0 ? 1.0 : -1.0;
   float k = which == 0 ? 0.0 : 2.4;
   float turn = uGasTime.x * (TAU / GAS_LOOP);
-  float a1 = uGasSheet.w * 0.012 * r, a2 = uGasSheet.w * 0.016 * sqrt(r), a3 = uGasSheet.w * 0.010 * sqrt(r);
+  float a1 = ripple * 0.012 * r, a2 = ripple * 0.016 * sqrt(r), a3 = ripple * 0.010 * sqrt(r);
   float p1 = phi - 1.3 * lr + 1.7 * k - 2.0 * turn;
   float p2 = 3.0 * phi + 4.0 * lr + k - 6.0 * turn;
   float p3 = 7.0 * phi - 9.0 * lr + 2.0 * k + 12.0 * turn;
@@ -953,9 +701,12 @@ vec3 sheetHeight(int which, vec2 g) {
 
 // One sheet at the point Q. "first" says whether the line of sight meets
 // its dust before its gas.
-void sheet(inout vec3 L, inout float T, vec3 Q, int which, bool first, float slant, float lam, float foot, vec2 gx, vec2 gy) {
+void sheet(inout vec3 L, inout float T, vec3 Q, int which, bool first, float slant, float alongOrbit, float lam, float foot, vec2 gx, vec2 gy) {
   float r = length(Q.xz);
-  vec4 p = gasAt(Q.xz, float(which), gx, gy);
+  // At the turn from the arc into the foreground, a grazing ray looks
+  // along the orbit and several fine fibres project into the same pixel.
+  float footprint = 1.0 + 3.0 * alongOrbit * smoothstep(3.0, 13.0, slant);
+  vec4 p = gasAt(Q.xz, float(which), gx * footprint, gy * footprint);
   // Near the hole the gas is drawn out into long fibres; further out the
   // flow is slower and it breaks into short tufts.
   float tuft = 0.8 * smoothstep(3.5, 8.5, r);
@@ -965,8 +716,9 @@ void sheet(inout vec3 L, inout float T, vec3 Q, int which, bool first, float sla
   // the gaps between them.
   float reachOut = c + 0.4 * (n - 0.5);
   float rim = 1.0 - smoothstep(uGasBody.y * (0.45 + 0.4 * reachOut), uGasBody.y * (0.75 + 0.4 * reachOut), r);
-  // The inner edge is as soft as a pixel is wide there.
-  float body = smoothstep(uGasBody.x - foot, uGasBody.x + 0.5 + foot, r) * rim;
+  // The inner sheet gradually thickens with radius. Include the footprint
+  // of each pixel so this transition also stays smooth on small screens.
+  float body = smoothstep(uGasBody.x - 0.18 - foot, uGasBody.x + 0.65 + foot, r) * rim;
   float g = gasShift(max(r, 1.6), lam);
   float depth = uGasDepth.x * body * pow(r / 3.0, -uGasDepth.y) * pow(2.0 * n, uGasDepth.z) * pow(2.0 * c, uGasDepth.w);
   // Deep gas near the hole is an even wall of light; further out the
@@ -995,26 +747,33 @@ void sheet(inout vec3 L, inout float T, vec3 Q, int which, bool first, float sla
   if (!first) { L += T * dustGlow * ember; T *= shade; }
 }
 
+// Keep the tangent-line approximation local to the crossing. Approach its
+// five-radius limit smoothly as the ray becomes parallel to a layer.
+vec3 layerPoint(vec3 P, vec3 d, float invDy, float height) {
+  float t = (height - P.y) * invDy;
+  return P + d * (t * inversesqrt(1.0 + t * t / 25.0));
+}
+
 // Where the line of sight goes through the disk at the point P, travelling
 // along d: half of the veil, the two sheets, the other half of the veil.
 void crossing(inout vec3 L, inout float T, vec3 P, vec3 d, float lam, float foot, vec2 gx, vec2 gy) {
   float r0 = length(P.xz);
-  float dy = abs(d.y) < 0.02 ? (d.y < 0.0 ? -0.02 : 0.02) : d.y;
-  float slant = 1.0 / abs(dy);
-  float way = dy < 0.0 ? 1.0 : -1.0;       // 1 when the light we follow goes down through the disk
+  float slant = inversesqrt(d.y * d.y + 0.025 * 0.025);
+  float invDy = d.y * slant * slant;
+  float way = d.y < 0.0 ? 1.0 : -1.0;       // 1 when the light we follow goes down through the disk
   float lift = uGasSheet.x + uGasSheet.y * r0;
   float thick = uGasSheet.z * (1.0 + 0.05 * r0);
-  // Near the disk the line of sight is almost straight: t is the distance
-  // along it from P.
-  #define AT(h) (P + d * clamp(((h) - P.y) / dy, -5.0, 5.0))
-  // Where it meets each rippled sheet, and how steeply.
-  vec3 Q0 = AT(lift), Q1 = AT(-lift);
+  // At the sides, the ray skims along the orbit and projected ripples can
+  // fold back. Across the central band it looks across the orbits.
+  float alongOrbit = smoothstep(0.22, 0.82, abs(dot(vec2(-P.z, P.x), d.xz)) / max(r0, 1.0));
+  float ripple = uGasSheet.w * mix(1.0, smoothstep(0.035, 0.23, abs(d.y)), alongOrbit);
+  vec3 Q0 = layerPoint(P, d, invDy, lift), Q1 = layerPoint(P, d, invDy, -lift);
   vec3 h0, h1;
   for (int i = 0; i < 3; i++) {
-    h0 = sheetHeight(0, Q0.xz);
-    h1 = sheetHeight(1, Q1.xz);
-    Q0 = mix(Q0, AT(h0.x), 0.75);
-    Q1 = mix(Q1, AT(h1.x), 0.75);
+    h0 = sheetHeight(0, Q0.xz, ripple);
+    h1 = sheetHeight(1, Q1.xz, ripple);
+    Q0 = mix(Q0, layerPoint(P, d, invDy, h0.x), 0.75);
+    Q1 = mix(Q1, layerPoint(P, d, invDy, h1.x), 0.75);
   }
   float s0 = 1.0 / max(abs(d.y - dot(d.xz, h0.yz)) / sqrt(1.0 + dot(h0.yz, h0.yz)), 0.025);
   float s1 = 1.0 / max(abs(d.y - dot(d.xz, h1.yz)) / sqrt(1.0 + dot(h1.yz, h1.yz)), 0.025);
@@ -1025,31 +784,31 @@ void crossing(inout vec3 L, inout float T, vec3 P, vec3 d, float lam, float foot
   bool ends = r0 < 1.2;
   bool on0 = !(ends && dot(Q0 - P, d) > 0.0), on1 = !(ends && dot(Q1 - P, d) > 0.0);
   float open = smoothstep(1.0, 1.7, r0);
-  veil(L, T, AT(way * 1.5 * thick), 0.133 * open, slant, lam);
-  veil(L, T, AT(way * 0.5 * thick), 0.367 * open, slant, lam);
-  if (topFirst) {
-    if (on0) sheet(L, T, Q0, 0, way > 0.0, s0, lam, foot, gx, gy);
-    if (on1) sheet(L, T, Q1, 1, way < 0.0, s1, lam, foot, gx, gy);
-  } else {
-    if (on1) sheet(L, T, Q1, 1, way < 0.0, s1, lam, foot, gx, gy);
-    if (on0) sheet(L, T, Q0, 0, way > 0.0, s0, lam, foot, gx, gy);
+  veil(L, T, layerPoint(P, d, invDy, way * 1.5 * thick), 0.133 * open, slant, lam);
+  veil(L, T, layerPoint(P, d, invDy, way * 0.5 * thick), 0.367 * open, slant, lam);
+  // Visit the visible sheets front to back. Keep a single copy of the
+  // material evaluation in the program, whichever sheet comes first.
+  int sheets = int(on0) + int(on1);
+  bool startOnTop = on0 && (!on1 || topFirst);
+  for (int i = 0; i < sheets; i++) {
+    bool top = (i == 0) == startOnTop;
+    sheet(L, T, top ? Q0 : Q1, top ? 0 : 1, top ? way > 0.0 : way < 0.0,
+          top ? s0 : s1, alongOrbit, lam, foot, gx, gy);
   }
-  veil(L, T, AT(-way * 0.5 * thick), 0.367 * open, slant, lam);
-  veil(L, T, AT(-way * 1.5 * thick), 0.133 * open, slant, lam);
-  #undef AT
+  veil(L, T, layerPoint(P, d, invDy, -way * 0.5 * thick), 0.367 * open, slant, lam);
+  veil(L, T, layerPoint(P, d, invDy, -way * 1.5 * thick), 0.133 * open, slant, lam);
 }
 
 // Light of the disk along the line of sight rd, and the share of the light
 // from behind that it lets through. Nothing further than "reach" counts.
 vec4 diskLight(vec3 rd, float reach) {
   float cosT = dot(rd, -uCamDir);
-  float sinT = sqrt(max(1.0 - cosT * cosT, 1e-10));
+  vec3 rayNormal = cross(rd, uCamDir);
+  float sinT = length(rayNormal);
   float b = min(uDist * sinT / sqrt(1.0 - 1.0 / uDist), RAY_B);
   // The side of the hole the line of sight passes on. Aimed straight at the
   // hole it has no side: any one will do.
-  vec3 e = rd + uCamDir * cosT;
-  float away = length(e);
-  e = away > 1e-5 ? e / away : normalize(cross(uCamDir, vec3(0.0, 0.0, 1.0)));
+  vec3 e = sinT > 1e-7 ? cross(uCamDir, rayNormal) / sinT : normalize(cross(uCamDir, vec3(0.0, 0.0, 1.0)));
   // The line of sight goes through the disk plane at the angle psi around
   // the hole, and again half a turn later.
   float psi = atan(-uCamDir.y, e.y) + PI;
@@ -1073,8 +832,14 @@ vec4 diskLight(vec3 rd, float reach) {
   float fb = min(2.2 * length(vec2(dot(Pb.xz, bx), dot(Pb.xz, by))) / max(length(Pb.xz), 0.5), 2.0);
   vec3 L = vec3(0.0);
   float T = 1.0;
-  if (okA && distance(Pa, cameraPosition) < reach) crossing(L, T, Pa, da, lam, fa, gax, gay);
-  if (okB && T > 0.003 && distance(Pb, cameraPosition) < reach) crossing(L, T, Pb, db, lam, fb, gbx, gby);
+  int crossings = okB && distance(Pb, cameraPosition) < reach ? 2 : 1;
+  for (int i = 0; i < crossings; i++) {
+    bool near = i == 0;
+    if (near && !(okA && distance(Pa, cameraPosition) < reach)) continue;
+    if (T <= 0.003) break;
+    crossing(L, T, near ? Pa : Pb, near ? da : db, lam, near ? fa : fb,
+             near ? gax : gbx, near ? gay : gby);
+  }
   return vec4(L, T);
 }
 `;
@@ -1109,7 +874,7 @@ uniform vec3 uGalaxy;      // direction of a faint background galaxy
 uniform vec3 uMwNormal;    // Milky Way plane normal
 uniform vec3 uMwCentre;    // direction of the galactic centre, in that plane
 ${GLSL_GAS}
-const vec3 FOG_CORE = vec3(1.00, 0.93, 0.82);
+const vec3 FOG_CORE = vec3(0.42, 0.90, 0.82);
 const vec3 FOG_HALO = vec3(0.42, 0.86, 1.00);
 vec2 octa(vec3 d) {
   d /= (abs(d.x) + abs(d.y) + abs(d.z));
@@ -1240,25 +1005,29 @@ void main() {
   vec4 v = uProjInv * vec4(vNdc, 1.0, 1.0);
   vec3 rd = normalize((uCamWorld * vec4(v.xyz / v.w, 0.0)).xyz);
   float cosT = dot(rd, -uCamDir);
-  vec3 col;
-  if (cosT <= 0.05) {
-    col = starfield(rd, 0.0);
-  } else {
-    float sinT = sqrt(max(1.0 - cosT * cosT, 0.0));
-    float b = uDist * sinT / sqrt(1.0 - 1.0 / uDist);
-    col = vec3(0.0);
-    if (b > B_CRIT + 2e-5) {
-      // The sky behind the hole, seen along the bent ray.
+  float sinT = sqrt(max(1.0 - cosT * cosT, 0.0));
+  float b = uDist * sinT / sqrt(1.0 - 1.0 / uDist);
+  bool facingHole = cosT > 0.05;
+  vec3 col = vec3(0.0);
+  if (!facingHole || b > B_CRIT + 2e-5) {
+    vec3 skyDirection = rd;
+    float turn = 0.0;
+    if (facingHole) {
       vec3 e = (rd + uCamDir * cosT) / max(sinT, 1e-6);
       float ang = skyAngle(b);
-      col = starfield(normalize(uCamDir * cos(ang) + e * sin(ang)), ang - (PI - asin(sinT)));
+      skyDirection = normalize(uCamDir * cos(ang) + e * sin(ang));
+      turn = ang - (PI - asin(sinT));
     }
+    col = starfield(skyDirection, turn);
+  }
+  if (facingHole) {
     // Thin hot gas around the hole glows faintly. Most of the pale light
     // inside the shadow is not this but the glare of the disk.
     col += FOG_CORE * (uFog.x * exp(-b * b / (uFog.y * uFog.y))) + FOG_HALO * (uFog.z * exp(-b * b / (uFog.w * uFog.w)));
-    // The photon ring: light that circled the hole before it left.
+    // Keep the photon ring narrow, with a faint shoulder as its light fades.
     float dr = (b - B_CRIT - 0.035) / 0.03;
-    col += vec3(1.0, 0.90, 0.74) * (uRing * exp(-dr * dr));
+    float ringLight = mix(exp(-dr * dr), exp(-0.045 * dr * dr), 0.10);
+    col += vec3(1.0, 0.90, 0.74) * (uRing * ringLight);
   }
   // The disk, in front of all that.
   vec4 gas = diskLight(rd, 1e9);
@@ -1496,19 +1265,32 @@ void main() {
 `;
 
 // ---- Start ----
-function start() {
+function prepareTables(distance) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker('./vendor/black-hole-tables-worker.js', { type: 'module' });
+    worker.onmessage = ({ data }) => { worker.terminate(); resolve(data); };
+    worker.onerror = event => { event.preventDefault(); worker.terminate(); reject(new Error(event.message)); };
+    worker.postMessage(distance);
+  }).catch(() => buildTables(distance));   // Workers can be disabled independently of WebGL.
+}
+
+async function start() {
   const booted = performance.now();
   // WebGL 2 on a real graphics chip. A browser that would draw this in
   // software gets the still: a frame a second is worse than a picture.
-  if (!document.createElement('canvas').getContext('webgl2', { failIfMajorPerformanceCaveat: true })) { fail('WebGL unavailable'); return; }
+  const attributes = { antialias: false, alpha: false, stencil: false, powerPreference: 'high-performance', failIfMajorPerformanceCaveat: true };
+  const gl = canvas.getContext('webgl2', attributes);
+  if (!gl) { fail('WebGL unavailable'); return; }
   let renderer;
   try {
-    renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, stencil: false, powerPreference: 'high-performance', failIfMajorPerformanceCaveat: true });
+    renderer = new THREE.WebGLRenderer({ canvas, context: gl, ...attributes });
   } catch (e) {
     fail('WebGL unavailable');
     return;
   }
-  const gl = renderer.getContext();
+  const tableData = prepareTables(D);
+  let lost = false;
+  canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); lost = true; fail('WebGL context lost'); });
   // Light is kept in half floats. Without them the picture still draws, in
   // 8 bits: the faintest gas is lost and the glare is weaker.
   const hdr = !!(gl.getExtension('EXT_color_buffer_float') || gl.getExtension('EXT_color_buffer_half_float')) && !/[?&]ldr=1/.test(search);
@@ -1579,12 +1361,8 @@ function start() {
   }
 
   // Scene.
-  const lensTex = buildLens();
-  const skyTex = buildSky();
-  const gasTex = buildGas();
-  gasTex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
   const gasUniforms = {
-    uRays: { value: buildRays() }, uGas: { value: gasTex }, uGasTime: { value: new THREE.Vector3() },
+    uRays: { value: null }, uGas: { value: null }, uGasTime: { value: new THREE.Vector3() },
     uGasBody: { value: new THREE.Vector4() }, uGasDepth: { value: new THREE.Vector4() },
     uGasSheet: { value: new THREE.Vector4() }, uGasHeat: { value: new THREE.Vector4() },
     uGasVeil: { value: new THREE.Vector4() }, uGasDust: { value: new THREE.Vector4() }, uGasEmber: { value: new THREE.Vector3() }
@@ -1600,7 +1378,7 @@ function start() {
     uniforms: Object.assign({}, gasUniforms, {
       uProjInv: { value: camera.projectionMatrixInverse }, uCamWorld: { value: camera.matrixWorld },
       uCamPos: { value: camera.position }, uCamDir: { value: camDir }, uDist: { value: D },
-      uSky: { value: skyTex }, uFog: { value: new THREE.Vector4() }, uRing: { value: 0 }, uCoarse: { value: hdr ? 0 : 1 },
+      uSky: { value: null }, uFog: { value: new THREE.Vector4() }, uRing: { value: 0 }, uCoarse: { value: hdr ? 0 : 1 },
       uStars: { value: 0 }, uEinstein: { value: Math.sqrt(2 / D) }, uPxPerRad: { value: 1 },
       uGalaxy: { value: new THREE.Vector3(...galaxyDir) }, uMwNormal: { value: new THREE.Vector3(...mwNormal) },
       uMwCentre: { value: new THREE.Vector3(...mwCentre) }
@@ -1611,10 +1389,10 @@ function start() {
   sky.renderOrder = -10;
   scene.add(sky);
 
-  const lensUniforms = () => ({ uLens: { value: lensTex }, uCamDir: { value: camDir }, uSinScale: { value: sinPerB } });
   const planetMat = new THREE.ShaderMaterial({
     vertexShader: planetVert, fragmentShader: planetFrag, side: THREE.DoubleSide,
-    uniforms: Object.assign(lensUniforms(), gasUniforms, {
+    uniforms: Object.assign({}, gasUniforms, {
+      uLens: { value: null }, uCamDir: { value: camDir }, uSinScale: { value: sinPerB },
       uPlanet: { value: new THREE.Vector4() }, uTime: { value: 0 }, uProjInv: { value: camera.projectionMatrixInverse },
       uCamWorld: { value: camera.matrixWorld }, uViewport: { value: viewport }, uDist: { value: D }, uCoarse: { value: hdr ? 0 : 1 }
     })
@@ -1692,13 +1470,13 @@ function start() {
   // the shadow makes the hole lean toward it a little.
   const view = { az: 0, el: look.incl * deg, zoom: 1, taz: 0, tel: look.incl * deg, tzoom: 1 };
   let mx = 0, my = 0, tmx = 0, tmy = 0, held = false, px = 0, py = 0, touched = -1e9, clock = 0;
-  let pending = 240;      // frames still to draw when the picture is otherwise still
+  let pending = 1;        // draw the resting reduced-motion view once; input adds settling frames
   let downX = 0, downY = 0, downAt = 0, travel = 0;
   let holeX = 0, holeY = 0, holeR = 0;    // the shadow on screen, in CSS pixels
   let over = false, lure = 0;
   const inHole = (x, y) => holeR > 0 && Math.hypot(x - holeX, y - holeY) <= holeR;
   const press = e => {
-    if (fallAt) return;
+    if (fallAt || !drawn()) return;
     // Other buttons, and keys held for a new tab or window, are the link's.
     if (e.currentTarget === portal && (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey)) return;
     held = true; px = downX = e.clientX; py = downY = e.clientY; downAt = performance.now(); travel = 0; pending = 240;
@@ -1902,9 +1680,32 @@ function start() {
     }
   }
 
+  // Queue all five programs before drawing, so the driver can link them
+  // while the worker computes the tables and the page can still take input.
+  postMesh.material = [downMat, blurMat, compositeMat];
+  const [tables] = await Promise.all([
+    tableData, renderer.compileAsync(scene, camera), renderer.compileAsync(postScene, postCam)
+  ]);
+  if (lost) return;
+  function texture(data, width, height, format, type) {
+    const tex = new THREE.DataTexture(data, width, height, format, type);
+    tex.needsUpdate = true;
+    return tex;
+  }
+  planetMat.uniforms.uLens.value = texture(tables.lens, LUT_W, LUT_H, THREE.RGBAFormat, THREE.FloatType);
+  skyMat.uniforms.uSky.value = texture(tables.sky, SKY_W, 1, THREE.RGBAFormat, THREE.FloatType);
+  gasUniforms.uRays.value = texture(tables.rays, RAY_W, RAY_H, THREE.RGFormat, THREE.FloatType);
+  const gas = texture(tables.gas, GAS_W, GAS_H, THREE.RGBAFormat, THREE.UnsignedByteType);
+  gas.wrapS = gas.wrapT = THREE.RepeatWrapping;
+  gas.magFilter = THREE.LinearFilter;
+  gas.minFilter = THREE.LinearMipmapLinearFilter;
+  gas.generateMipmaps = true;
+  gas.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  gasUniforms.uGas.value = gas;
+
   // ---- Loop: at most about 80 frames a second, fewer pixels on slow machines ----
   const t0 = performance.now();
-  let last = 0, lastDraw = 0, shown = false, lost = false;
+  let last = 0, lastDraw = 0, shown = false;
   let gaps = [], tuned = 0, pace = 0, trial = null;
   function frame(now) {
     if (lost) return;
@@ -1913,7 +1714,7 @@ function start() {
     if (!sceneRT || sizeChanged()) {
       if (!resize()) return;
       last = 0;
-      pending = 240;
+      pending = Math.max(pending, 1);
     }
     if (reduced) {
       // A still picture: drawn again only while the view is being moved.
@@ -1963,7 +1764,6 @@ function start() {
     if (T >= FALL) leave();               // dark: through to the other side
   }
   document.addEventListener('visibilitychange', () => { last = 0; gaps = []; trial = null; });
-  canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); lost = true; fail('WebGL context lost'); });
   glFall = {
     reset() {
       held = false; over = false; lure = 0; pending = 240;
@@ -1986,11 +1786,11 @@ function start() {
   }
 }
 
-try {
-  start();
-} catch (e) {
-  fail(e && e.message ? e.message : 'failed to start');
-}
+// Acquiring the graphics context can stall even before any shaders compile.
+// Give the browser a paint with the title and the working link first.
+requestAnimationFrame(() => setTimeout(() => {
+  start().catch(e => fail(e && e.message ? e.message : 'failed to start'));
+}, 0));
   </script>
 </body>
 </html>
